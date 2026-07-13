@@ -216,13 +216,21 @@ if (!user.plain_password) {
       // Auto-generate employee ID: VJC-HYD-2026-001
       const locationCode = (location || "Hyderabad").startsWith("Hyderabad") ? "HYD" : "BLR";
       const year = new Date().getFullYear();
-const countResult = await db.query(
-  `SELECT COUNT(*) as cnt FROM users
-   WHERE employee_id LIKE $1`,
-  [`VJC-${locationCode}-${year}-%`]
-);
-const seq = String(parseInt(countResult.rows[0].cnt) + 1).padStart(3, "0");
-const employee_id = `VJC-${locationCode}-${year}-${seq}`;
+
+      const idResult = await db.query(
+        `SELECT employee_id FROM users
+         WHERE employee_id LIKE $1
+         ORDER BY employee_id DESC LIMIT 1`,
+        [`VJC-${locationCode}-${year}-%`]
+      );
+      let seq = "001";
+      if (idResult.rows.length > 0) {
+        const lastSeq = parseInt(idResult.rows[0].employee_id.split("-").pop());
+        seq = String(lastSeq + 1).padStart(3, "0");
+      }
+      const employee_id = `VJC-${locationCode}-${year}-${seq}`;
+      const password_hash = bcrypt.hashSync(password, 10);
+      const permsJson = JSON.stringify(permissions || {});
 
      await db.query(
         `INSERT INTO users

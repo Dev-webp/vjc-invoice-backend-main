@@ -253,13 +253,17 @@ if (!user.plain_password) {
       });
 
     } catch (err) {
-      console.error("Create employee error:", err);
-      if (err.code === "23505")  // PostgreSQL unique violation
-        return res.status(400).json({ success: false, message: "Email already exists" });
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+  console.error("Create employee error:", err);
 
+  return res.status(500).json({
+    success: false,
+    code: err.code,
+    constraint: err.constraint,
+    detail: err.detail,
+    message: err.message
+  });
+}
+});
   // ── PUT /api/auth/employees/:id ── Update employee ───────
   router.put("/employees/:id", auth, chairmanOnly, async (req, res) => {
     const {

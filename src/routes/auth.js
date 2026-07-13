@@ -203,6 +203,7 @@ if (!user.plain_password) {
 
   // ── POST /api/auth/employees ── Add Employee ─────────────
   router.post("/employees", auth, chairmanOnly, async (req, res) => {
+    console.log("ADD EMPLOYEE API HIT");
     const {
       name, email, password, department, role, location,
       salary, paid_leaves, bank_account, ifsc_code, pan_number,

@@ -203,7 +203,6 @@ if (!user.plain_password) {
 
   // ── POST /api/auth/employees ── Add Employee ─────────────
   router.post("/employees", auth, chairmanOnly, async (req, res) => {
-    console.log("ADD EMPLOYEE API HIT");
     const {
       name, email, password, department, role, location,
       salary, paid_leaves, bank_account, ifsc_code, pan_number,
@@ -217,17 +216,13 @@ if (!user.plain_password) {
       // Auto-generate employee ID: VJC-HYD-2026-001
       const locationCode = (location || "Hyderabad").startsWith("Hyderabad") ? "HYD" : "BLR";
       const year = new Date().getFullYear();
-
-      const countResult = await db.query(
-        `SELECT COUNT(*) as cnt FROM users
-         WHERE location = $1 AND EXTRACT(YEAR FROM created_at) = $2`,
-        [location || "Hyderabad", year]
-      );
-      const seq = String(parseInt(countResult.rows[0].cnt) + 1).padStart(3, "0");
-      const employee_id = `VJC-${locationCode}-${year}-${seq}`;
-
-      const password_hash = bcrypt.hashSync(password, 10);
-      const permsJson = JSON.stringify(permissions || {});
+const countResult = await db.query(
+  `SELECT COUNT(*) as cnt FROM users
+   WHERE employee_id LIKE $1`,
+  [`VJC-${locationCode}-${year}-%`]
+);
+const seq = String(parseInt(countResult.rows[0].cnt) + 1).padStart(3, "0");
+const employee_id = `VJC-${locationCode}-${year}-${seq}`;
 
      await db.query(
         `INSERT INTO users
@@ -254,17 +249,13 @@ if (!user.plain_password) {
       });
 
     } catch (err) {
-  console.error("Create employee error:", err);
-
-  return res.status(500).json({
-    success: false,
-    code: err.code,
-    constraint: err.constraint,
-    detail: err.detail,
-    message: err.message
+      console.error("Create employee error:", err);
+      if (err.code === "23505")  // PostgreSQL unique violation
+        return res.status(400).json({ success: false, message: "Email already exists" });
+      res.status(500).json({ success: false, message: err.message });
+    }
   });
-}
-});
+
   // ── PUT /api/auth/employees/:id ── Update employee ───────
   router.put("/employees/:id", auth, chairmanOnly, async (req, res) => {
     const {

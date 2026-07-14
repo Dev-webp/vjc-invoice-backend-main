@@ -47,14 +47,15 @@ const createQuote = async (data) => {
     gst,
     total_amount,
     notes,
-    status
+    status,
+    line_items
   } = data;
 
   const result = await pool.query(
 `INSERT INTO quotes
 (quote_id, customer_id, customer_name, salesperson,
- quote_date, expiry_date, total_amount, status, notes, created_by)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+ quote_date, expiry_date, total_amount, status, notes, created_by, line_items)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 RETURNING *`,
 [
   quote_id,
@@ -66,7 +67,8 @@ RETURNING *`,
   total_amount || 0,
   status || 'Draft',
   notes || null,
-  data.created_by || null
+  data.created_by || null,
+  JSON.stringify(line_items || [])
 ]
   );
 
@@ -85,7 +87,8 @@ const updateQuote = async (id, data) => {
     gst,
     total_amount,
     notes,
-    status
+    status,
+    line_items
   } = data;
 
   const result = await pool.query(
@@ -100,8 +103,9 @@ const updateQuote = async (id, data) => {
       gst=$8,
       total_amount=$9,
       notes=$10,
-      status=$11
-    WHERE id=$12
+      status=$11,
+      line_items=$12
+    WHERE id=$13
     RETURNING *`,
     [
       customer_id,
@@ -115,6 +119,7 @@ const updateQuote = async (id, data) => {
       total_amount,
       notes,
       status,
+      JSON.stringify(line_items || []),
       id
     ]
   );

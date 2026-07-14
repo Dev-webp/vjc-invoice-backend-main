@@ -2,6 +2,7 @@ const quoteRepo = require('../repositories/quote.repository');
 const customerRepository = require('../repositories/customer.repository');
 const emailService = require('../services/email.service');
 const { generateQuoteId } = require('../models/quote');
+const pdfService = require('../services/pdf.service');
 
 // ── Helper: send mail to customer if quote status is "Sent" ──
 const sendQuoteMailIfNeeded = async (quote) => {
@@ -77,12 +78,11 @@ const createQuote = async (req, res) => {
 
     console.log("GENERATED QUOTE ID:", quote_id);
 
-   const quote = await quoteRepo.createQuote({
+const quote = await quoteRepo.createQuote({
   ...req.body,
   quote_id,
-  created_by: req.user?.id,        // ← ADD
+  created_by: req.user?.id,
 });
-
 console.log("QUOTE SAVED SUCCESSFULLY");
 console.log(quote);
 
@@ -203,6 +203,29 @@ const deleteQuote = async (req, res) => {
   }
 };
 
+// GET download PDF
+const downloadQuotePdf = async (req, res) => {
+  try {
+    const quote = await quoteRepo.getQuoteById(req.params.id);
+    if (!quote) {
+      return res.status(404).json({ success: false, message: 'Quote not found' });
+    }
+
+    const html = emailService.buildQuoteHtml(quote);
+    const pdfBuffer = await pdfService.generatePdfFromHtml(html);
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="Quote-${quote.quote_id || quote.id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error("DOWNLOAD QUOTE PDF ERROR:", err);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getQuotes,
   getQuoteById,
@@ -210,4 +233,5 @@ module.exports = {
   updateQuote,
   updateQuoteStatus,
   deleteQuote,
+  downloadQuotePdf,
 };

@@ -941,6 +941,164 @@ INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDi
     });
     console.log('✅ Payment reminder mail sent to customer!');
   },
+  // ─── NEW: Build Quote HTML (for PDF download, reused from mail template) ───
+  buildQuoteHtml: (quote) => {
+    const totalAmount = Number(quote.total_amount || 0);
+
+    const html = `
+<style>
+  @media only screen and (max-width: 600px) {
+    .vjc-stack-table, .vjc-stack-table tr, .vjc-stack-table td {
+      display: block !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      text-align: left !important;
+    }
+  }
+</style>
+<div style="font-family:Arial,Helvetica,sans-serif;background:#eef1f4;padding:20px;">
+  <div style="max-width:600px;margin:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;overflow:hidden;">
+
+    <table style="width:100%;border-collapse:collapse;background:#1976d2;">
+  <tr>
+    <td style="vertical-align:middle;width:60%;padding:20px 0 20px 28px;">
+      <div style="background:#fff;display:inline-block;padding:8px 12px;border-radius:4px;">
+        <img src="https://vjc-invoice-backend-main.vercel.app/public/quote-logo.png"
+          style="height:55px;display:block;" />
+      </div>
+    </td>
+    <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
+      <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">QUOTE</div>
+      <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
+        VJC Immigration And Visa Consultants Pvt. Ltd.,
+      </div>
+    </td>
+  </tr>
+</table>
+
+    <div style="padding:28px;">
+      <div style="font-size:16px;color:#222;margin-bottom:4px;">
+        Hi ${quote.customer_name || 'Customer'},
+      </div>
+      <div style="font-size:13.5px;color:#555;line-height:1.6;margin-bottom:20px;">
+        Thank you for your interest in our services. Please find your quote details below.
+      </div>
+
+      <table class="vjc-stack-table" style="width:100%;border-collapse:collapse;font-size:13px;color:#333;margin-bottom:18px;">
+        <tr>
+          <td style="padding:8px 10px;font-weight:700;">Quote Number</td>
+          <td style="padding:8px 10px;text-align:right;">${quote.quote_number || quote.quote_id || '-'}</td>
+        </tr>
+        <tr style="background:#f8f9fa;">
+          <td style="padding:8px 10px;font-weight:700;">Quote Date</td>
+          <td style="padding:8px 10px;text-align:right;">${quote.quote_date
+  ? new Date(quote.quote_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+  : "-"
+}</td>
+        </tr>
+       <tr>
+  <td style="padding:8px 10px;font-weight:700;">Valid Until</td>
+  <td style="padding:8px 10px;text-align:right;color:#d32f2f;font-weight:700;">
+    ${quote.expiry_date
+      ? new Date(quote.expiry_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-"
+    }
+  </td>
+</tr>
+        ${quote.salesperson ? `
+        <tr style="background:#f8f9fa;">
+          <td style="padding:8px 10px;font-weight:700;">Salesperson</td>
+          <td style="padding:8px 10px;text-align:right;">${quote.salesperson}</td>
+        </tr>` : ''}
+      </table>
+
+      ${(() => {
+        const items = quote.line_items || [];
+        if (!items.length) return '';
+
+        let subTotal = 0, totalGST = 0;
+
+        const rows = items.map((li) => {
+          const qty      = Number(li.qty || 1);
+          const rate     = Number(li.rate || 0);
+          const discount = Number(li.discount || 0);
+          const gstPct   = Number(li.gst || 0);
+
+          const base    = qty * rate;
+          const discAmt = base * (discount / 100);
+          const taxable = base - discAmt;
+          const gstAmt  = taxable * (gstPct / 100);
+          const lineTotal = taxable + gstAmt;
+
+          subTotal += taxable;
+          totalGST += gstAmt;
+
+          return `
+            <tr>
+              <td style="padding:8px 10px;border-bottom:1px solid #eee;">${li.description || '-'}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">${qty}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;">₹${rate.toLocaleString('en-IN')}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:center;">${gstPct}%</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">₹${lineTotal.toLocaleString('en-IN')}</td>
+            </tr>`;
+        }).join('');
+
+        return `
+        <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:8px;">Service Details</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#333;margin-bottom:16px;">
+          <thead>
+            <tr style="background:#f0f4f8;">
+              <th style="padding:8px 10px;text-align:left;">Service</th>
+              <th style="padding:8px 10px;text-align:center;">Qty</th>
+              <th style="padding:8px 10px;text-align:right;">Rate</th>
+              <th style="padding:8px 10px;text-align:center;">GST %</th>
+              <th style="padding:8px 10px;text-align:right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;color:#333;margin-bottom:16px;">
+          <tr>
+            <td style="padding:3px 10px;">Sub Total</td>
+            <td style="padding:3px 10px;text-align:right;">₹${subTotal.toLocaleString('en-IN')}</td>
+          </tr>
+          <tr>
+            <td style="padding:3px 10px;">GST</td>
+            <td style="padding:3px 10px;text-align:right;">₹${totalGST.toLocaleString('en-IN')}</td>
+          </tr>
+        </table>`;
+      })()}
+
+      <div style="background:#f0f7ff;border-radius:6px;padding:18px 20px;text-align:right;margin-bottom:20px;">
+        <div style="font-size:12px;color:#555;">Total Quote Amount</div>
+        <div style="font-size:24px;font-weight:800;color:#1565c0;">
+          ₹${totalAmount.toLocaleString('en-IN')}
+        </div>
+      </div>
+
+      ${quote.notes ? `
+      <div style="font-size:12.5px;color:#555;line-height:1.6;border-top:1px solid #eee;padding-top:14px;">
+        ${quote.notes}
+      </div>` : ''}
+
+      <div style="font-size:12.5px;color:#777;margin-top:22px;line-height:1.6;">
+        Please reply to this email if you'd like to proceed or have any questions.
+        We look forward to working with you.
+      </div>
+    </div>
+
+    <div style="background:#111;color:#ddd;text-align:center;font-size:11px;padding:13px 18px;">
+      VJC Immigration And Visa Consultants Pvt. Ltd., - Raheja Arcade, 16 &amp; 17, 5th Block,
+      Koramangala, Bengaluru, Karnataka 560095
+    </div>
+  </div>
+</div>
+    `;
+
+    return html;
+  },
 };
 
 module.exports = emailService;

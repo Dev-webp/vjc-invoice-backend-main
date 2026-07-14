@@ -6,6 +6,7 @@ const { verifyToken } = require('../middlewares/auth.middleware');  // ← ADD
 
 router.get('/',             verifyToken, ctrl.getQuotes);           // ← ADD
 router.get('/:id',          verifyToken, ctrl.getQuoteById);
+router.get('/:id/download-pdf', verifyToken, ctrl.downloadQuotePdf);
 router.post('/',            verifyToken, ctrl.createQuote);
 router.put('/:id',          verifyToken, ctrl.updateQuote);
 router.patch('/:id/status', verifyToken, ctrl.updateQuoteStatus);

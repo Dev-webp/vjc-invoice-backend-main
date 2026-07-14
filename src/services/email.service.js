@@ -3,11 +3,11 @@ const transporter = require('../config/email');
 const emailService = {
 
   sendChairmanApprovalMail: async (invoice) => {
-    const approveUrl =
-      `https://vjc-invoice-backend.vercel.app/api/invoices/approve/${invoice.chairman_token}`;
+   const approveUrl =
+      `https://vjc-invoice-backend-main.vercel.app/api/invoices/approve/${invoice.chairman_token}`;
 
     const rejectUrl =
-      `https://vjc-invoice-backend.vercel.app/api/invoices/reject/${invoice.chairman_token}`;
+      `https://vjc-invoice-backend-main.vercel.app/api/invoices/reject/${invoice.chairman_token}`;
 
     const html = `
 <style>
@@ -28,7 +28,7 @@ const emailService = {
 </style>
 <div style="font-family:Arial,sans-serif;background:#f4f6f9;padding:20px;">
   <div style="max-width:900px;margin:auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #ddd;">
-
+ 
     <div style="background:#0f9d94;color:#fff;padding:18px 25px;position:relative;">
 
   <img

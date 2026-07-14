@@ -691,8 +691,8 @@ INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDi
     <table style="width:100%;border-collapse:collapse;background:#1976d2;">
   <tr>
     <td style="vertical-align:middle;width:60%;padding:20px 0 20px 28px;">
-      <img src="https://vjc-invoice-backend.vercel.app/quote-logo.png"
-        style="height:55px;display:block;" />
+      <img src="https://vjc-invoice-backend-main.vercel.app/public/quote-logo.png"
+  style="height:55px;display:block;" />
     </td>
     <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
   <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">QUOTE</div>

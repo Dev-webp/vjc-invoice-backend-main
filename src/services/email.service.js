@@ -688,12 +688,20 @@ INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDi
 <div style="font-family:Arial,Helvetica,sans-serif;background:#eef1f4;padding:20px;">
   <div style="max-width:600px;margin:auto;background:#fff;border:1px solid #e2e2e2;border-radius:8px;overflow:hidden;">
 
-    <div style="background:#1976d2;padding:24px 28px;">
-      <div style="font-size:20px;font-weight:800;color:#fff;">VJC OVERSEAS</div>
-      <div style="font-size:11px;color:#cfe3fb;letter-spacing:1px;margin-top:2px;">
-        IMMIGRATION &amp; VISA CONSULTANTS
-      </div>
-    </div>
+    <table style="width:100%;border-collapse:collapse;background:#1976d2;">
+  <tr>
+    <td style="vertical-align:middle;width:60%;padding:20px 0 20px 28px;">
+      <img src="https://vjc-invoice-backend.vercel.app/quote-logo.png"
+        style="height:55px;display:block;" />
+    </td>
+    <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
+  <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">QUOTE</div>
+  <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
+    VJC Immigration And Visa Consultants Pvt. Ltd.,
+  </div>
+</td>
+  </tr>
+</table>
 
     <div style="padding:28px;">
       <div style="font-size:16px;color:#222;margin-bottom:4px;">
@@ -715,12 +723,15 @@ INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDi
   : "-"
 }</td>
         </tr>
-        <tr>
-          <td style="padding:8px 10px;font-weight:700;">Valid Until</td>
-          <td style="padding:8px 10px;text-align:right;color:#d32f2f;font-weight:700;">
-            ${quote.expiry_date || '-'}
-          </td>
-        </tr>
+       <tr>
+  <td style="padding:8px 10px;font-weight:700;">Valid Until</td>
+  <td style="padding:8px 10px;text-align:right;color:#d32f2f;font-weight:700;">
+    ${quote.expiry_date
+      ? new Date(quote.expiry_date).toLocaleDateString("en-GB").replace(/\//g, "-")
+      : "-"
+    }
+  </td>
+</tr>
         ${quote.salesperson ? `
         <tr style="background:#f8f9fa;">
           <td style="padding:8px 10px;font-weight:700;">Salesperson</td>

@@ -41,7 +41,7 @@ return { customers, stats, total, page, totalPages };
   if (emailExists) throw new Error('Email already exists');
 
   // Auto-generate customer_id
-  const customer_id = await generateCustomerId();
+  const customer_id = await generateCustomerId(data.created_by);
   return await customerRepository.create({ ...data, customer_id });
 },
 

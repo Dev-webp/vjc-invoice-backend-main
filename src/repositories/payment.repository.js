@@ -5,9 +5,10 @@
 const pool = require('../config/db');  // ← salesInvoice same ga — no destructuring
 
 // ── Generate next PAY-XXXXXX ─────────────────────────────────
-const generatePaymentNo = async () => {
+const generatePaymentNo = async (userId) => {
   const result = await pool.query(
-    "SELECT payment_no FROM payments ORDER BY id DESC LIMIT 1"
+    "SELECT payment_no FROM payments WHERE created_by = $1 ORDER BY id DESC LIMIT 1",
+    [userId]
   );
   if (result.rows.length === 0) return "PAY-000001";
   const last = result.rows[0].payment_no;
@@ -38,7 +39,7 @@ const getPaymentById = async (id) => {
 
 // ── Create ───────────────────────────────────────────────────
 const createPayment = async (data) => {
-  const paymentNo = await generatePaymentNo();
+  const paymentNo = await generatePaymentNo(data.created_by);
   const { invoice_id, customer_id, customer_name, email, due_date, amount_due, notes } = data;
 
 const result = await pool.query(

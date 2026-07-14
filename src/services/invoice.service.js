@@ -13,7 +13,7 @@ const invoiceService = {
 },
 
   createInvoice: async (data) => {
-    const invoice_number = await generateInvoiceNumber();
+    const invoice_number = await generateInvoiceNumber(data.created_by);
     const chairman_token = generateToken();
     const invoice = await invoiceRepository.create({
       ...data,

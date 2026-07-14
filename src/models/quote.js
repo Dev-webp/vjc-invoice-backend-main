@@ -1,8 +1,9 @@
 const pool = require('../config/db');
 
-const generateQuoteId = async () => {
+const generateQuoteId = async (userId) => {
   const result = await pool.query(
-    'SELECT quote_id FROM quotes ORDER BY id DESC LIMIT 1'
+    'SELECT quote_id FROM quotes WHERE created_by = $1 ORDER BY id DESC LIMIT 1',
+    [userId]
   );
   if (result.rows.length === 0) return 'QT-000001';
   const last = result.rows[0].quote_id;

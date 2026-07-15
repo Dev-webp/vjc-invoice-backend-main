@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+console.log("CLOUDINARY =", process.env.CLOUDINARY_CLOUD_NAME);
 console.log("HOST =", process.env.DB_HOST);
 console.log("PORT =", process.env.DB_PORT);
 console.log("DB =", process.env.DB_NAME);

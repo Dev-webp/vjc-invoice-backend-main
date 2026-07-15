@@ -12,6 +12,7 @@ const expenseRoutes          = require('./expense.routes');
 const timeTrackingRoutes = require('./timetracking.routes');
 const reportRoutes = require('./report.routes'); 
 const dashboardRoutes = require('./dashboard.routes');
+const leadRoutes = require('./lead.routes'); 
 
 router.use('/customers',          customerRoutes);
 router.use('/invoices',           invoiceRoutes);
@@ -24,5 +25,6 @@ router.use('/expenses',           expenseRoutes);
 router.use('/timetracking', timeTrackingRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dashboard', dashboardRoutes);   
+router.use('/leads', leadRoutes);    
 
 module.exports = router;

@@ -12,9 +12,9 @@ const create = async (req, res) => {
     }
 
     // req.user is set by verifyToken middleware -> { id, name, role, branch }
-    const createdBy = req.user.id;
+    const createdBy = req.user.id || req.user.userId || req.user._id;
     const lead = await leadModel.createLead(
-      { ...req.body, branch: req.body.branch || req.user.branch },
+      { ...req.body, branch: req.body.branch || req.user.location },
       createdBy
     );
 
@@ -28,7 +28,8 @@ const create = async (req, res) => {
 // GET /api/leads — View Enquiry (role aware)
 const getAll = async (req, res) => {
   try {
-    const { role, id: userId } = req.user;
+    const { role } = req.user;
+    const userId = req.user.id || req.user.userId || req.user._id;
     const { status, source, branch, keyword, dateFrom, dateTo } = req.query;
 
     const leads = await leadModel.getAllLeads({
@@ -51,10 +52,11 @@ const getById = async (req, res) => {
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
     // Employee can only view their own / assigned lead
-    const { role, id: userId } = req.user;
+    const { role } = req.user;
+    const userId = req.user.id || req.user.userId || req.user._id;
     if (
       role !== 'chairman' &&
-      role !== 'admin' &&
+      role !== 'mis-executive' &&
       lead.created_by !== userId &&
       lead.assigned_to !== userId
     ) {
@@ -79,7 +81,7 @@ const assign = async (req, res) => {
       });
     }
 
-    const assignedBy = req.user.id;
+    const assignedBy = req.user.id || req.user.userId || req.user._id;
     const updated = await leadModel.assignLeadsBulk(ids, branch, staff_id, assignedBy);
 
     res.json({ success: true, updated });

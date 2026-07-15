@@ -86,9 +86,9 @@ const getAllLeads = async ({ role, userId, filters = {} }) => {
             ab.name AS assigned_by_name,
             at.name AS assigned_to_name
      FROM leads l
-     LEFT JOIN employees cb ON cb.id = l.created_by
-     LEFT JOIN employees ab ON ab.id = l.assigned_by
-     LEFT JOIN employees at ON at.id = l.assigned_to
+     LEFT JOIN users cb ON cb.id = l.created_by
+     LEFT JOIN users ab ON ab.id = l.assigned_by
+     LEFT JOIN users at ON at.id = l.assigned_to
      ${whereClause}
      ORDER BY l.created_at DESC`,
     values

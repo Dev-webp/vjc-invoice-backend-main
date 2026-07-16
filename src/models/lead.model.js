@@ -52,30 +52,30 @@ const getAllLeads = async ({ role, userId, filters = {} }) => {
 
   if (role !== 'chairman' && role !== 'mis-executive') {
     values.push(userId, userId);
-    conditions.push(`(created_by = $${values.length - 1} OR assigned_to = $${values.length})`);
+    conditions.push(`(l.created_by = $${values.length - 1} OR l.assigned_to = $${values.length})`);
   }
 
   if (filters.status) {
     values.push(filters.status);
-    conditions.push(`status = $${values.length}`);
+    conditions.push(`l.status = $${values.length}`);
   }
   if (filters.source) {
     values.push(filters.source);
-    conditions.push(`source = $${values.length}`);
+    conditions.push(`l.source = $${values.length}`);
   }
   if (filters.branch) {
     values.push(filters.branch);
-    conditions.push(`branch = $${values.length}`);
+    conditions.push(`l.branch = $${values.length}`);
   }
   if (filters.keyword) {
     values.push(`%${filters.keyword}%`);
     conditions.push(
-      `(lead_name ILIKE $${values.length} OR email ILIKE $${values.length} OR contact_number ILIKE $${values.length})`
+      `(l.lead_name ILIKE $${values.length} OR l.email ILIKE $${values.length} OR l.contact_number ILIKE $${values.length})`
     );
   }
   if (filters.dateFrom && filters.dateTo) {
     values.push(filters.dateFrom, filters.dateTo);
-    conditions.push(`created_at::date BETWEEN $${values.length - 1} AND $${values.length}`);
+    conditions.push(`l.created_at::date BETWEEN $${values.length - 1} AND $${values.length}`);
   }
 
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

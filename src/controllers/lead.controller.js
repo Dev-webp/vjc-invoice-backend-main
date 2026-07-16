@@ -105,4 +105,43 @@ const updateStatus = async (req, res) => {
   }
 };
 
-module.exports = { create, getAll, getById, assign, updateStatus };
+// GET /api/leads/:id/notes
+const getNotes = async (req, res) => {
+  try {
+    const notes = await leadModel.getNotesByLeadId(req.params.id);
+    res.json({ success: true, notes });
+  } catch (err) {
+    console.error('Get notes error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch notes' });
+  }
+};
+
+// POST /api/leads/:id/notes
+const addNote = async (req, res) => {
+  try {
+    const { remark } = req.body;
+    if (!remark || !remark.trim()) {
+      return res.status(400).json({ success: false, message: 'Remark is required' });
+    }
+    const commentedBy = req.user.id || req.user.userId || req.user._id;
+    const note = await leadModel.addNoteToLead(req.params.id, req.body, commentedBy);
+    res.json({ success: true, note });
+  } catch (err) {
+    console.error('Add note error:', err);
+    res.status(500).json({ success: false, message: 'Failed to save note' });
+  }
+};
+
+// GET /api/leads/:id/profile-history
+const getProfileHistory = async (req, res) => {
+  try {
+    const data = await leadModel.getLeadProfileHistory(req.params.id);
+    if (!data.lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+    res.json({ success: true, ...data });
+  } catch (err) {
+    console.error('Get profile history error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch profile history' });
+  }
+};
+
+module.exports = { create, getAll, getById, assign, updateStatus, getNotes, addNote, getProfileHistory };

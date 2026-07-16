@@ -82,6 +82,7 @@ const getAllLeads = async ({ role, userId, filters = {} }) => {
 
   const result = await pool.query(
     `SELECT l.*,
+            (SELECT COUNT(*) FROM lead_notes n WHERE n.lead_id = l.id) AS notes_count,
             cb.name AS created_by_name,
             ab.name AS assigned_by_name,
             at.name AS assigned_to_name
@@ -122,6 +123,14 @@ const assignLeadsBulk = async (ids, branch, staffId, assignedBy) => {
      RETURNING *`,
     [branch, staffId, assignedBy, ids]
   );
+
+  // Logs this assignment so screenshot 4's "ASSIGNED HISTORY" table has data.
+  await pool.query(
+    `INSERT INTO lead_assignment_history (lead_id, branch, assigned_to, assigned_by)
+     SELECT unnest($1::int[]), $2, $3, $4`,
+    [ids, branch, staffId, assignedBy]
+  );
+
   return result.rows;
 };
 
@@ -134,6 +143,72 @@ const updateLeadStatus = async (id, status) => {
   return result.rows[0];
 };
 
+// ── Notes (Add Notes dialog — screenshot 3) ─────────────────────────────────
+const getNotesByLeadId = async (leadId) => {
+  const result = await pool.query(
+    `SELECT n.*, u.name AS commented_by_name
+     FROM lead_notes n
+     LEFT JOIN users u ON u.id = n.commented_by
+     WHERE n.lead_id = $1
+     ORDER BY n.created_at DESC`,
+    [leadId]
+  );
+  return result.rows;
+};
+
+const addNoteToLead = async (leadId, data, commentedBy) => {
+  const { remark, add_to_reminder, reminder_date, reminder_time } = data;
+  const result = await pool.query(
+    `INSERT INTO lead_notes
+      (lead_id, remark, add_to_reminder, reminder_date, reminder_time, commented_by)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING *`,
+    [leadId, remark, !!add_to_reminder, reminder_date || null, reminder_time || null, commentedBy]
+  );
+  return result.rows[0];
+};
+
+// ── Full profile-history page (screenshot 4) ────────────────────────────────
+const getLeadProfileHistory = async (leadId) => {
+  const leadResult = await pool.query(
+    `SELECT l.*,
+            cb.name AS created_by_name,
+            ab.name AS assigned_by_name,
+            at.name AS assigned_to_name
+     FROM leads l
+     LEFT JOIN users cb ON cb.id = l.created_by
+     LEFT JOIN users ab ON ab.id = l.assigned_by
+     LEFT JOIN users at ON at.id = l.assigned_to
+     WHERE l.id = $1`,
+    [leadId]
+  );
+
+  const historyResult = await pool.query(
+    `SELECT h.*, ab.name AS assigned_by_name, at.name AS user_name
+     FROM lead_assignment_history h
+     LEFT JOIN users ab ON ab.id = h.assigned_by
+     LEFT JOIN users at ON at.id = h.assigned_to
+     WHERE h.lead_id = $1
+     ORDER BY h.assigned_date DESC`,
+    [leadId]
+  );
+
+  const notesResult = await pool.query(
+    `SELECT n.*, u.name AS commented_by
+     FROM lead_notes n
+     LEFT JOIN users u ON u.id = n.commented_by
+     WHERE n.lead_id = $1
+     ORDER BY n.created_at DESC`,
+    [leadId]
+  );
+
+  return {
+    lead: leadResult.rows[0],
+    assigned_history: historyResult.rows,
+    notes: notesResult.rows,
+  };
+};
+
 module.exports = {
   createLead,
   getAllLeads,
@@ -141,4 +216,7 @@ module.exports = {
   assignLead,
   assignLeadsBulk,
   updateLeadStatus,
+  getNotesByLeadId,
+  addNoteToLead,
+  getLeadProfileHistory,
 };

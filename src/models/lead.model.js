@@ -209,6 +209,18 @@ const getLeadProfileHistory = async (leadId) => {
   };
 };
 
+// ── Create a lead coming from Facebook/Instagram webhook ────────────────────
+const createLeadFromWebhook = async ({ lead_name, contact_number, email, source }) => {
+  const result = await pool.query(
+    `INSERT INTO leads
+      (lead_name, contact_number, email, source, created_by, status)
+     VALUES ($1,$2,$3,$4,$5,'New')
+     RETURNING *`,
+    [lead_name, contact_number, email || null, source, null]
+  );
+  return result.rows[0];
+};
+
 module.exports = {
   createLead,
   getAllLeads,
@@ -219,4 +231,5 @@ module.exports = {
   getNotesByLeadId,
   addNoteToLead,
   getLeadProfileHistory,
+  createLeadFromWebhook,
 };

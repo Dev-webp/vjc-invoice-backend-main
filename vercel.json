@@ -4,8 +4,5 @@
       "memory": 2048,
       "maxDuration": 30
     }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  }
 }

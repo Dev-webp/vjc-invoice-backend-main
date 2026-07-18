@@ -144,4 +144,43 @@ const getProfileHistory = async (req, res) => {
   }
 };
 
-module.exports = { create, getAll, getById, assign, updateStatus, getNotes, addNote, getProfileHistory };
+// GET /api/leads/facebook/webhook — Meta verification handshake
+const verifyWebhook = (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode === 'subscribe' && token === process.env.FB_VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  return res.sendStatus(403);
+};
+
+// POST /api/leads/facebook/webhook — receive lead events
+const receiveWebhookLead = async (req, res) => {
+  try {
+    // Meta sends leadgen id here; fetching full lead fields needs a Graph API
+    // call using FB_PAGE_ACCESS_TOKEN. For now saving whatever body contains.
+    const entry = req.body.entry?.[0]?.changes?.[0]?.value;
+
+    if (entry) {
+      await leadModel.createLeadFromWebhook({
+        lead_name: entry.full_name || entry.lead_name || 'Facebook Lead',
+        contact_number: entry.phone_number || entry.contact_number || '',
+        email: entry.email || null,
+        source: 'Facebook',
+      });
+    }
+
+    res.sendStatus(200); // Meta requires 200 quickly or it retries
+  } catch (err) {
+    console.error('Facebook webhook error:', err);
+    res.sendStatus(200); // still 200 so Meta doesn't keep retrying
+  }
+};
+
+module.exports = {
+  create, getAll, getById, assign, updateStatus, getNotes, addNote, getProfileHistory,
+  verifyWebhook,
+  receiveWebhookLead,
+};

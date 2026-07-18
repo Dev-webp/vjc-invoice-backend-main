@@ -3,6 +3,9 @@ const router = express.Router();
 const leadController = require('../controllers/lead.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
 
+router.get('/facebook/webhook',  leadController.verifyWebhook);
+router.post('/facebook/webhook', leadController.receiveWebhookLead);
+
 router.get('/',              verifyToken, leadController.getAll);
 router.get('/:id',           verifyToken, leadController.getById);
 router.post('/',             verifyToken, leadController.create);

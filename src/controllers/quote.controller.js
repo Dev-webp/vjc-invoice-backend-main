@@ -74,7 +74,7 @@ const createQuote = async (req, res) => {
     console.log("REQUEST BODY:");
     console.log(JSON.stringify(req.body, null, 2));
 
-    const quote_id = await generateQuoteId(req.user?.id);
+    const quote_id = await generateQuoteId();
 
     console.log("GENERATED QUOTE ID:", quote_id);
 

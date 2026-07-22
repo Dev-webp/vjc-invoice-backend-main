@@ -168,8 +168,14 @@ const receiveWebhookLead = async (req, res) => {
 
     const leadgenId = change.value.leadgen_id;
 
-    const url =
-      `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+// Ignore Meta sample test payload
+if (leadgenId === "444444444444") {
+  console.log("Facebook sample webhook received.");
+  return res.sendStatus(200);
+}
+
+const url =
+  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
 
     const response = await axios.get(url);
 

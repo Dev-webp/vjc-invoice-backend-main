@@ -68,6 +68,12 @@ getById: async (id) => {
       screenshot_base64,
        original_invoice_id 
     } = data;
+    console.log("INSERT DEBUG:", {
+  invoice_number,
+  customer_id,
+  customer_name,
+  created_by: data.created_by
+});
 
     const result = await pool.query(
    `INSERT INTO invoices

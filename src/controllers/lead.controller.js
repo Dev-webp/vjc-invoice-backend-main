@@ -1,4 +1,5 @@
 const leadModel = require('../models/lead.model');
+const axios = require('axios');
 
 // POST /api/leads  — Add Enquiry
 const create = async (req, res) => {
@@ -159,23 +160,35 @@ const verifyWebhook = (req, res) => {
 // POST /api/leads/facebook/webhook — receive lead events
 const receiveWebhookLead = async (req, res) => {
   try {
-    // Meta sends leadgen id here; fetching full lead fields needs a Graph API
-    // call using FB_PAGE_ACCESS_TOKEN. For now saving whatever body contains.
-    const entry = req.body.entry?.[0]?.changes?.[0]?.value;
+    const change = req.body.entry?.[0]?.changes?.[0];
 
-    if (entry) {
-      await leadModel.createLeadFromWebhook({
-        lead_name: entry.full_name || entry.lead_name || 'Facebook Lead',
-        contact_number: entry.phone_number || entry.contact_number || '',
-        email: entry.email || null,
-        source: 'Facebook',
-      });
+    if (!change || change.field !== 'leadgen') {
+      return res.sendStatus(200);
     }
 
-    res.sendStatus(200); // Meta requires 200 quickly or it retries
+    const leadgenId = change.value.leadgen_id;
+
+    const url =
+      `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+
+    const response = await axios.get(url);
+
+    const fieldData = response.data.field_data || [];
+
+    const getField = (name) =>
+      fieldData.find(f => f.name === name)?.values?.[0] || '';
+
+   await leadModel.createLeadFromWebhook({
+  lead_name: getField('full_name') || getField('name') || 'Facebook Lead',
+  contact_number: getField('phone_number'),
+  email: getField('email'),
+  source: 'Facebook',
+});
+
+    return res.sendStatus(200);
   } catch (err) {
-    console.error('Facebook webhook error:', err);
-    res.sendStatus(200); // still 200 so Meta doesn't keep retrying
+    console.error('Facebook webhook error:', err.response?.data || err);
+    return res.sendStatus(200);
   }
 };
 

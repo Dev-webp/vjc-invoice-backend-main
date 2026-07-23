@@ -177,7 +177,7 @@ if (leadgenId === "444444444444") {
 }
 
 const url =
-  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,ad_id,form_id,page_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
 
     const response = await axios.get(url);
 

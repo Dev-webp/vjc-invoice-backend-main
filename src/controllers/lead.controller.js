@@ -188,14 +188,26 @@ console.log("========================================");
 
 const fieldData = response.data.field_data || [];
 
-const getField = (name) =>
-  fieldData.find(f => f.name === name)?.values?.[0] || '';
+const getField = (...names) => {
+  const field = fieldData.find(f =>
+    names.some(name =>
+      f.name?.toLowerCase().includes(name.toLowerCase())
+    )
+  );
+  return field?.values?.[0] || '';
+};
 
-   await leadModel.createLeadFromWebhook({
-  lead_name: getField('full_name') || getField('name') || 'Facebook Lead',
-  contact_number: getField('phone_number'),
-  email: getField('email'),
-  source: 'Facebook',
+await leadModel.createLeadFromWebhook({
+  lead_name:
+    getField("full_name", "name", "full name") || "Facebook Lead",
+
+  contact_number:
+    getField("phone_number", "phone", "mobile"),
+
+  email:
+    getField("email", "email address"),
+
+  source: "Facebook",
 });
 
     return res.sendStatus(200);

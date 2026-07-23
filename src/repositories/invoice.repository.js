@@ -13,18 +13,20 @@ const invoiceRepository = {
   `;
 
   const vals = [];
+  const conditions = [`i.status IN ('Approved', 'Paid')`];
 
   if (role !== 'chairman' && role !== 'mis-executive' && userId) {
-    query += ' WHERE i.created_by = $1';
     vals.push(userId);
+    conditions.push(`i.created_by = $${vals.length}`);
   }
+
+  query += ' WHERE ' + conditions.join(' AND ');
 
   query += ' ORDER BY i.created_at DESC';
 
   const result = await pool.query(query, vals);
   return result.rows;
 },
-
   getByToken: async (token) => {
     const result = await pool.query(
       'SELECT * FROM invoices WHERE chairman_token = $1',

@@ -160,6 +160,8 @@ const verifyWebhook = (req, res) => {
 // POST /api/leads/facebook/webhook — receive lead events
 const receiveWebhookLead = async (req, res) => {
   try {
+    console.log("WEBHOOK BODY:");
+    console.log(JSON.stringify(req.body, null, 2));
     const change = req.body.entry?.[0]?.changes?.[0];
 
     if (!change || change.field !== 'leadgen') {

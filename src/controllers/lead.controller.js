@@ -179,10 +179,15 @@ const url =
 
     const response = await axios.get(url);
 
-    const fieldData = response.data.field_data || [];
+// Debug: Print complete Graph API response
+console.log("========== GRAPH API RESPONSE ==========");
+console.log(JSON.stringify(response.data, null, 2));
+console.log("========================================");
 
-    const getField = (name) =>
-      fieldData.find(f => f.name === name)?.values?.[0] || '';
+const fieldData = response.data.field_data || [];
+
+const getField = (name) =>
+  fieldData.find(f => f.name === name)?.values?.[0] || '';
 
    await leadModel.createLeadFromWebhook({
   lead_name: getField('full_name') || getField('name') || 'Facebook Lead',

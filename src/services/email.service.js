@@ -369,6 +369,11 @@ ${isIGST ? `
           <td style="padding:4px 0 10px 6px;color:#d32f2f;font-weight:700;">Balance Amount:</td>
           <td style="padding:4px 6px 10px 0;text-align:right;font-weight:700;color:#d32f2f;">
 INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}          </td>
+        </tr>
+        <tr style="background:#fff8e1;">
+          <td style="padding:4px 0 10px 6px;color:#856404;font-weight:700;">Due Date:</td>
+          <td style="padding:4px 6px 10px 0;text-align:right;font-weight:700;color:#856404;">
+${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").replace(/\//g, "-") : "-"}          </td>
         </tr>` : ''}
       </table>
       <hr style="border:none;border-top:1px solid #e6e6e6;margin:0 0 8px 0;" />
@@ -609,6 +614,11 @@ ${isIGST ? `
           <td style="padding:4px 0 10px 6px;color:#d32f2f;font-weight:700;">Balance Amount:</td>
           <td style="padding:4px 6px 10px 0;text-align:right;font-weight:700;color:#d32f2f;">
 INR ${Number(invoice.balance_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}          </td>
+        </tr>
+        <tr style="background:#fff8e1;">
+          <td style="padding:4px 0 10px 6px;color:#856404;font-weight:700;">Due Date:</td>
+          <td style="padding:4px 6px 10px 0;text-align:right;font-weight:700;color:#856404;">
+${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").replace(/\//g, "-") : "-"}          </td>
         </tr>` : ''}
       </table>
       <hr style="border:none;border-top:1px solid #e6e6e6;margin:0 0 8px 0;" />

@@ -40,19 +40,77 @@ const getPaymentById = async (id) => {
 // ── Create ───────────────────────────────────────────────────
 const createPayment = async (data) => {
   const paymentNo = await generatePaymentNo(data.created_by);
-  const { invoice_id, customer_id, customer_name, email, due_date, amount_due, notes } = data;
+  const {
+  invoice_id,
+  customer_id,
+  customer_name,
+  email,
+  due_date,
+  amount_due,
+  amount_received,
+  payment_method,
+  payment_date,
+  reference,
+  paymentType,
+  notes,
+} = data;
 
 const result = await pool.query(
     `INSERT INTO payments
       (payment_no, invoice_id, customer_id, customer_name, email,
        request_date, due_date, amount_due, amount_received,
        payment_method, txn_ref, paid_date, status, notes, reminder_log, created_by)
-     VALUES ($1,$2,$3,$4,$5, CURRENT_DATE,$6,$7,0,'','',NULL,
-             'Initial Request',$8,'[]',$9)
+     VALUES (
+$1,$2,$3,$4,$5,
+CURRENT_DATE,
+$6,
+$7,
+$8,
+$9,
+$10,
+$11,
+$12,
+$13,
+'[]',
+$14
+)
      RETURNING *`,
-    [paymentNo, invoice_id || null, customer_id, customer_name,
-     email || "", due_date || null, Number(amount_due), notes || "",
-     data.created_by || null]
+    [
+  paymentNo,
+  invoice_id || null,
+  customer_id,
+  customer_name,
+  email || "",
+  due_date || null,
+
+  paymentType === "Full Paid"
+    ? Number(amount_due || amount_received || 0)
+    : Number(amount_due),
+
+  paymentType === "Full Paid"
+    ? Number(amount_received || 0)
+    : 0,
+
+  paymentType === "Full Paid"
+    ? payment_method || ""
+    : "",
+
+  paymentType === "Full Paid"
+    ? reference || ""
+    : "",
+
+  paymentType === "Full Paid"
+    ? payment_date || new Date()
+    : null,
+
+  paymentType === "Full Paid"
+    ? "Paid"
+    : "Initial Request",
+
+  notes || "",
+
+  data.created_by || null
+]
   );
   return result.rows[0];
 };

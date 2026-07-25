@@ -319,6 +319,34 @@ src="https://vjc-invoice-backend.vercel.app/vjc-overseas-logo.png"
       </tr>
     </table>
 
+    ${(invoice.pax && invoice.pax.length > 0) ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Travelers</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${invoice.pax.map((p, i) => `
+        <tr style="${i % 2 === 0 ? 'background:#f8f9fa;' : ''}">
+          <td style="padding:5px 10px;">${i + 1}. ${p.name || '-'}</td>
+        </tr>`).join('')}
+      </table>
+    </div>` : ''}
+
+    ${(() => {
+      let items = [];
+      try { items = typeof invoice.items === 'string' ? JSON.parse(invoice.items) : (invoice.items || []); } catch (e) { items = []; }
+      if (!items.length || items.length < 2) return ''; // single service → unchanged, no extra table
+      return `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Service Breakdown</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${items.map((it, i) => `
+        <tr style="${i % 2 === 0 ? 'background:#f8f9fa;' : ''}">
+          <td style="padding:5px 10px;">${it.description || '-'}</td>
+          <td style="padding:5px 10px;text-align:right;">₹${Number(it.amount || 0).toLocaleString('en-IN')}</td>
+        </tr>`).join('')}
+      </table>
+    </div>`;
+    })()}
+
    <!-- Totals -->
     <div style="padding:22px 28px 0 28px;">
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">

@@ -114,10 +114,15 @@ Please review the invoice details below before approving or rejecting it.
       <td style="padding:10px 14px;font-weight:700;color:#444;">Due Date</td>
       <td style="padding:10px 14px;">${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
     </tr>
-    ${invoice.notes ? `
+ ${invoice.notes ? `
     <tr style="background:#f8f9fa;">
       <td style="padding:10px 14px;font-weight:700;color:#444;">Description</td>
       <td style="padding:10px 14px;">${invoice.notes}</td>
+    </tr>` : ''}
+    ${(Array.isArray(invoice.pax) && invoice.pax.length > 0) ? `
+    <tr>
+      <td style="padding:10px 14px;font-weight:700;color:#444;vertical-align:top;">Travelers</td>
+      <td style="padding:10px 14px;">${invoice.pax.map(p => p.name).join(', ')}</td>
     </tr>` : ''}
   </table>
 ${invoice.screenshot_base64 ? `
@@ -735,7 +740,7 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
   </div>
 </td>
     <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
-  <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">QUOTE</div>
+  <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
   <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
     VJC Immigration And Visa Consultants Pvt. Ltd.,
   </div>
@@ -1006,7 +1011,7 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
       </div>
     </td>
     <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
-      <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">QUOTE</div>
+      <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
       <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
         VJC Immigration And Visa Consultants Pvt. Ltd.,
       </div>

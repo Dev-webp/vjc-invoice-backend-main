@@ -216,7 +216,7 @@ const downloadQuotePdf = async (req, res) => {
 
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="Quote-${quote.quote_id || quote.id}.pdf"`,
+      'Content-Disposition': `attachment; filename="Proforma Invoice-${quote.quote_id || quote.id}.pdf"`,
       'Content-Length': pdfBuffer.length,
     });
     res.send(pdfBuffer);

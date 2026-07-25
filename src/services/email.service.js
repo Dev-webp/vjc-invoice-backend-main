@@ -311,6 +311,7 @@ src="https://vjc-invoice-backend.vercel.app/vjc-overseas-logo.png"
 <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Name :</td><td style="padding:2px 0;">${invoice.customer_name || '-'}</td></tr>           <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Email :</td><td style="padding:2px 0;">${invoice.customer_email || '-'}</td></tr>
             <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Mobile :</td><td style="padding:2px 0;">${invoice.customer_phone || '-'}</td></tr>
 <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top;">Address :</td><td style="padding:2px 0;">${invoice.customer_address || '-'}</td></tr>
+${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">GSTIN :</td><td style="padding:2px 0;">${invoice.customer_gstin}</td></tr>` : ''}
           </table>
         </td>
         <td style="vertical-align:top;width:45%;padding:0 28px 0 0;">
@@ -584,6 +585,7 @@ src="https://vjc-invoice-backend.vercel.app/vjc-overseas-logo.png"
 <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Name :</td><td style="padding:2px 0;">${invoice.customer_name || '-'}</td></tr>           <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Email :</td><td style="padding:2px 0;">${invoice.customer_email || '-'}</td></tr>
             <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Mobile :</td><td style="padding:2px 0;">${invoice.customer_phone || '-'}</td></tr>
 <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top;">Address :</td><td style="padding:2px 0;">${invoice.customer_address || '-'}</td></tr>
+${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">GSTIN :</td><td style="padding:2px 0;">${invoice.customer_gstin}</td></tr>` : ''}
           </table>
         </td>
         <td style="vertical-align:top;width:45%;padding:0 28px 0 0;">

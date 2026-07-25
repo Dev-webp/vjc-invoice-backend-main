@@ -740,7 +740,7 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
   </div>
 </td>
     <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
-  <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
+  <div style="font-size:19px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
   <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
     VJC Immigration And Visa Consultants Pvt. Ltd.,
   </div>
@@ -1011,7 +1011,7 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
       </div>
     </td>
     <td style="vertical-align:middle;width:40%;text-align:right;padding:20px 28px 20px 0;">
-      <div style="font-size:24px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
+      <div style="font-size:19px;font-weight:800;color:#fff;letter-spacing:0.5px;">PROFORMA INVOICE</div>
       <div style="font-size:11.5px;color:#cfe3fb;margin-top:4px;">
         VJC Immigration And Visa Consultants Pvt. Ltd.,
       </div>

@@ -130,6 +130,36 @@ $19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28
     return result.rows[0];
   },
 
+  // ✅ NEW: Dashboard-based approval (chairman logged in, no token needed)
+  getPending: async () => {
+    const result = await pool.query(
+      `SELECT * FROM invoices WHERE status = 'Pending' ORDER BY created_at DESC`
+    );
+    return result.rows;
+  },
+
+  approveById: async (id) => {
+    const result = await pool.query(
+      `UPDATE invoices
+       SET status='Approved', approved_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0];
+  },
+
+  rejectById: async (id) => {
+    const result = await pool.query(
+      `UPDATE invoices
+       SET status='Rejected', rejected_at=NOW()
+       WHERE id=$1
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0];
+  },
+
   markPaidByInvoiceNumber: async (invoiceNumber) => {
     const result = await pool.query(
       `UPDATE invoices

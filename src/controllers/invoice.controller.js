@@ -83,6 +83,34 @@ const invoiceController = {
     }
   },
 
+  // ✅ NEW: Dashboard-based approve/reject (JSON response, for logged-in chairman)
+  getPending: async (req, res) => {
+    try {
+      const invoices = await invoiceService.getPendingInvoices();
+      res.json({ success: true, invoices });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
+  approveById: async (req, res) => {
+    try {
+      const invoice = await invoiceService.approveInvoiceById(req.params.id);
+      res.json({ success: true, invoice });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  rejectById: async (req, res) => {
+    try {
+      const invoice = await invoiceService.rejectInvoiceById(req.params.id);
+      res.json({ success: true, invoice });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
   downloadPdf: async (req, res) => {
     try {
       const { pdfBuffer, invoice_number } = await invoiceService.getInvoicePdfBuffer(req.params.id);

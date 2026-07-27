@@ -78,12 +78,73 @@ const invoiceService = {
     return approved;
   },
 
-  // Chairman REJECT
+// Chairman REJECT
   rejectInvoice: async (token) => {
     const invoice = await invoiceRepository.getByToken(token);
     if (!invoice) throw new Error('Invalid token');
     if (invoice.status !== 'Pending') throw new Error('Already processed');
     return await invoiceRepository.reject(token);
+  },
+
+  // ✅ NEW: Dashboard-based Approve/Reject (chairman logged in, no token)
+  getPendingInvoices: async () => {
+    return await invoiceRepository.getPending();
+  },
+
+  approveInvoiceById: async (id) => {
+    const invoice = await invoiceRepository.getById(id);
+    if (!invoice) throw new Error('Invoice not found');
+    if (invoice.status !== 'Pending') throw new Error('Already processed');
+
+    const approved = await invoiceRepository.approveById(id);
+
+    await pool.query(
+      `UPDATE customers SET
+        outstanding = outstanding + $2,
+        total_payments = total_payments + $1,
+        last_transaction = NOW()
+       WHERE id = $3`,
+      [
+        approved.paid_amount || 0,
+        approved.balance_amount || 0,
+        approved.customer_id
+      ]
+    );
+
+    let customerDetails = {};
+    try {
+      const custRes = await pool.query(
+        `SELECT customer_id, phone, address, city, state, gstin
+         FROM customers WHERE id = $1`,
+        [approved.customer_id]
+      );
+      if (custRes.rows.length > 0) {
+        customerDetails = custRes.rows[0];
+      }
+    } catch (err) {
+      console.log('⚠️ Could not fetch customer details for mail:', err.message);
+    }
+
+    const mailPayload = {
+      ...approved,
+      customer_id: customerDetails.customer_id || approved.customer_id,
+      customer_phone: customerDetails.phone || approved.customer_phone,
+      customer_address: customerDetails.address
+        ? `${customerDetails.address}${customerDetails.city ? ', ' + customerDetails.city : ''}${customerDetails.state ? ', ' + customerDetails.state : ''}`
+        : approved.customer_address,
+      customer_gstin: customerDetails.gstin || approved.customer_gstin,
+      customer_country: customerDetails.country || approved.customer_country || 'India',
+    };
+
+    await emailService.sendClientInvoiceMail(mailPayload);
+    return approved;
+  },
+
+  rejectInvoiceById: async (id) => {
+    const invoice = await invoiceRepository.getById(id);
+    if (!invoice) throw new Error('Invoice not found');
+    if (invoice.status !== 'Pending') throw new Error('Already processed');
+    return await invoiceRepository.rejectById(id);
   },
 
   // ─── NEW: Dashboard "Download PDF" ───────────────────────

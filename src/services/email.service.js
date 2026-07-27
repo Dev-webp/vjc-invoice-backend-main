@@ -340,17 +340,31 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
       let items = [];
       try { items = typeof invoice.items === 'string' ? JSON.parse(invoice.items) : (invoice.items || []); } catch (e) { items = []; }
       if (!items.length || items.length < 2) return ''; // single service → unchanged, no extra table
-      return `
-    <div style="padding:16px 28px 0 28px;">
-      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Service Breakdown</div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
-        ${items.map((it, i) => `
+
+      const taxableItems = items.filter((it) => it.taxable !== false);       // old items (no `taxable` field) → treated as taxable, unchanged
+      const passThroughItems = items.filter((it) => it.taxable === false);
+
+      const renderRows = (arr) => arr.map((it, i) => `
         <tr style="${i % 2 === 0 ? 'background:#f8f9fa;' : ''}">
           <td style="padding:5px 10px;">${it.description || '-'}</td>
           <td style="padding:5px 10px;text-align:right;">₹${Number(it.amount || 0).toLocaleString('en-IN')}</td>
-        </tr>`).join('')}
+        </tr>`).join('');
+
+      return `
+    ${taxableItems.length > 0 ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Professional / Service Charges</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${renderRows(taxableItems)}
       </table>
-    </div>`;
+    </div>` : ''}
+    ${passThroughItems.length > 0 ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Reimbursement of Expenses (At Actuals)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${renderRows(passThroughItems)}
+      </table>
+    </div>` : ''}`;
     })()}
 
    <!-- Totals -->
@@ -596,9 +610,51 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
            <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;">Invoice Date :</td><td style="padding:2px 0;text-align:right;">${invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString("en-GB").replace(/\//g, "-") : "-"}</td></tr>
             <tr><td class="vjc-label" style="font-weight:700;padding:2px 6px 2px 0;white-space:nowrap;vertical-align:top;">Service Type :</td><td style="padding:2px 0;text-align:right;">${invoice.notes || invoice.service_type || '-'}</td></tr>
           </table>
-        </td>
+</td>
       </tr>
     </table>
+
+    ${(invoice.pax && invoice.pax.length > 0) ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Travelers</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${invoice.pax.map((p, i) => `
+        <tr style="${i % 2 === 0 ? 'background:#f8f9fa;' : ''}">
+          <td style="padding:5px 10px;">${i + 1}. ${p.name || '-'}</td>
+        </tr>`).join('')}
+      </table>
+    </div>` : ''}
+
+    ${(() => {
+      let items = [];
+      try { items = typeof invoice.items === 'string' ? JSON.parse(invoice.items) : (invoice.items || []); } catch (e) { items = []; }
+      if (!items.length || items.length < 2) return '';
+
+      const taxableItems = items.filter((it) => it.taxable !== false);
+      const passThroughItems = items.filter((it) => it.taxable === false);
+
+      const renderRows = (arr) => arr.map((it, i) => `
+        <tr style="${i % 2 === 0 ? 'background:#f8f9fa;' : ''}">
+          <td style="padding:5px 10px;">${it.description || '-'}</td>
+          <td style="padding:5px 10px;text-align:right;">₹${Number(it.amount || 0).toLocaleString('en-IN')}</td>
+        </tr>`).join('');
+
+      return `
+    ${taxableItems.length > 0 ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Professional / Service Charges</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${renderRows(taxableItems)}
+      </table>
+    </div>` : ''}
+    ${passThroughItems.length > 0 ? `
+    <div style="padding:16px 28px 0 28px;">
+      <div style="font-size:13px;font-weight:700;color:#222;margin-bottom:6px;">Reimbursement of Expenses (At Actuals)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;color:#333;">
+        ${renderRows(passThroughItems)}
+      </table>
+    </div>` : ''}`;
+    })()}
 
     <div style="padding:22px 28px 0 28px;">
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">

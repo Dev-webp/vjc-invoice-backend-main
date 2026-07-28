@@ -42,9 +42,13 @@ WHERE status = 'Approved' ${filter}
   };
 };
 
-const getSalesExpensesOverview = async (role, userId) => {
+const getSalesExpensesOverview = async (role, userId, year) => {
   const isChairman = (role === 'chairman' || role === 'mis-executive');
   const filter = isChairman ? '' : `AND created_by = '${userId}'`;
+
+  // NEW — selected year (defaults to current year if not passed)
+  const selectedYear = year ? Number(year) : new Date().getFullYear();
+  const yearStart = `${selectedYear}-01-01`;
 
   const result = await pool.query(`
     SELECT
@@ -66,13 +70,12 @@ COALESCE((
         WHERE DATE_TRUNC('month', date) = DATE_TRUNC('month', month_series)
       ), 0) AS expenses
     FROM generate_series(
-      DATE_TRUNC('month', CURRENT_DATE) - INTERVAL '5 months',
-      DATE_TRUNC('month', CURRENT_DATE),
+      DATE_TRUNC('year', '${yearStart}'::date),
+      DATE_TRUNC('year', '${yearStart}'::date) + INTERVAL '11 months',
       INTERVAL '1 month'
     ) AS month_series
     ORDER BY month_series
   `);
-
   const rows = result.rows.map(r => ({
     month: r.month,
     sales: Number(r.sales),

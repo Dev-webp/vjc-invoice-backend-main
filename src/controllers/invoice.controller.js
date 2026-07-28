@@ -93,16 +93,6 @@ const invoiceController = {
     }
   },
 
-  // ✅ NEW: Full history (Pending + Approved + Rejected)
-  getHistory: async (req, res) => {
-    try {
-      const invoices = await invoiceService.getApprovalHistory();
-      res.json({ success: true, invoices });
-    } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  },
-
   approveById: async (req, res) => {
     try {
       const invoice = await invoiceService.approveInvoiceById(req.params.id);

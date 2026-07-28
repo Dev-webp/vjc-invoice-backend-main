@@ -91,11 +91,6 @@ const invoiceService = {
     return await invoiceRepository.getPending();
   },
 
-  // ✅ NEW: Full history for Approval Requests page
-  getApprovalHistory: async () => {
-    return await invoiceRepository.getAllForApprovalHistory();
-  },
-
   approveInvoiceById: async (id) => {
     const invoice = await invoiceRepository.getById(id);
     if (!invoice) throw new Error('Invoice not found');

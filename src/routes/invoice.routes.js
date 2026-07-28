@@ -5,7 +5,6 @@ const invoiceController = require('../controllers/invoice.controller');
 const { verifyToken, chairmanOnly } = require('../middlewares/auth.middleware');  // CHANGED: added chairmanOnly
 
 router.get('/pending', verifyToken, chairmanOnly, invoiceController.getPending);       // NEW
-router.get('/history', verifyToken, chairmanOnly, invoiceController.getHistory);       // NEW
 router.put('/:id/approve', verifyToken, chairmanOnly, invoiceController.approveById);  // NEW
 router.put('/:id/reject',  verifyToken, chairmanOnly, invoiceController.rejectById);   // NEW
 

@@ -138,14 +138,6 @@ $19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28
     return result.rows;
   },
 
-  // ✅ NEW: Full history — Pending + Approved + Rejected (mail-based or dashboard-based, both included)
-  getAllForApprovalHistory: async () => {
-    const result = await pool.query(
-      `SELECT * FROM invoices ORDER BY created_at DESC LIMIT 100`
-    );
-    return result.rows;
-  },
-
   approveById: async (id) => {
     const result = await pool.query(
       `UPDATE invoices

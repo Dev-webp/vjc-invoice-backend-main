@@ -377,13 +377,14 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
   </td>
 </tr>
 
+${!(invoice.pax && invoice.pax.length > 0) ? `
 <tr>
   <td style="padding:4px 0;color:#333;font-weight:600;">Invoice Amount :</td>
   <td style="padding:4px 0;text-align:right;font-weight:700;color:#222;">
     INR ${invoiceAmountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
   </td>
 </tr>
-
+` : ''}
 ${isIGST ? `
 <tr>
   <td style="padding:4px 0;color:#333;font-weight:600;">IGST (${invoice.tax_percent || 18}%) :</td>
@@ -665,12 +666,14 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
   </td>
 </tr>
 
+${!(invoice.pax && invoice.pax.length > 0) ? `
 <tr>
   <td style="padding:4px 0;color:#333;font-weight:600;">Invoice Amount :</td>
   <td style="padding:4px 0;text-align:right;font-weight:700;color:#222;">
     INR ${invoiceAmountNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
   </td>
 </tr>
+` : ''}
 
 ${isIGST ? `
 <tr>

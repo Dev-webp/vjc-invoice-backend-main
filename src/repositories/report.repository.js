@@ -5,18 +5,22 @@ const salesByCustomer = async ({ role, userId } = {}) => {
  const whereClause = '';
 
   const result = await pool.query(`
-    SELECT
-      i.customer_name AS customer,
-      COUNT(i.id) AS invoices,
-      COALESCE(SUM(i.total_amount), 0) AS amount,
-      COALESCE(SUM(p.amount_received), 0) AS paid
-    FROM invoices i
-    LEFT JOIN payments p
-      ON p.customer_name = i.customer_name
-    ${whereClause}
-    GROUP BY i.customer_name
-    ORDER BY amount DESC
-  `);
+  SELECT
+    u.name AS person,
+    u.email AS email,
+    COUNT(i.id) AS invoices,
+    COALESCE(SUM(i.total_amount), 0) AS amount,
+    COALESCE(SUM(i.paid_amount), 0) AS paid,
+    COALESCE(SUM(i.balance_amount), 0) AS pending
+  FROM users u
+  LEFT JOIN invoices i
+    ON i.created_by = u.id
+    ${dateFilter}
+  WHERE u.role != 'chairman'
+  ${userFilter}
+  GROUP BY u.id, u.name, u.email
+  ORDER BY amount DESC
+`);
 
   return result.rows.map(r => ({
     customer: r.customer,

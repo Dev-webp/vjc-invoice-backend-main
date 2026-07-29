@@ -191,7 +191,7 @@ const salesBySalesPerson = async ({ role, userId, year, month, day } = {}) => {
     FROM users u
     LEFT JOIN invoices i
       ON i.created_by = u.id
-      AND i.status = 'approved'
+      AND i.status = 'Approved'
       ${dateFilter}
     WHERE u.role != 'chairman'
     ${userFilter}

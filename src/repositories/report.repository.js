@@ -170,15 +170,11 @@ const customerBalanceSummary = async () => {
 };
 
 // 8. Sales by Sales Person
-const salesBySalesPerson = async ({ role, userId, dateRange } = {}) => {
-  const dateFilter = {
-    today:       `AND DATE(i.invoice_date) = CURRENT_DATE`,
-    thisWeek:    `AND DATE(i.invoice_date) >= DATE_TRUNC('week', CURRENT_DATE)`,
-    thisMonth:   `AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE)`,
-    lastMonth:   `AND DATE_TRUNC('month', i.invoice_date) = DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')`,
-    thisQuarter: `AND DATE_TRUNC('quarter', i.invoice_date) = DATE_TRUNC('quarter', CURRENT_DATE)`,
-    thisYear:    `AND DATE_TRUNC('year', i.invoice_date) = DATE_TRUNC('year', CURRENT_DATE)`,
-  }[dateRange] || '';
+const salesBySalesPerson = async ({ role, userId, year, month, day } = {}) => {
+  let dateFilter = '';
+  if (year)  dateFilter += ` AND EXTRACT(YEAR FROM i.invoice_date) = ${Number(year)}`;
+  if (month) dateFilter += ` AND EXTRACT(MONTH FROM i.invoice_date) = ${Number(month)}`;
+  if (day)   dateFilter += ` AND EXTRACT(DAY FROM i.invoice_date) = ${Number(day)}`;
 
   const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
     ? `AND u.id = ${userId}`
@@ -193,8 +189,10 @@ const salesBySalesPerson = async ({ role, userId, dateRange } = {}) => {
       COALESCE(SUM(i.paid_amount), 0) AS paid,
       COALESCE(SUM(i.balance_amount), 0) AS pending
     FROM users u
-    LEFT JOIN invoices i ON i.created_by = u.id
-    ${dateFilter}
+    LEFT JOIN invoices i
+      ON i.created_by = u.id
+      AND i.status = 'approved'
+      ${dateFilter}
     WHERE u.role != 'chairman'
     ${userFilter}
     GROUP BY u.id, u.name, u.email

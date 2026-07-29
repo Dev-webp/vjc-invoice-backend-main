@@ -5,7 +5,10 @@ const wrap = (fn) => async (req, res) => {
     const role      = req.user?.role;
     const userId    = req.user?.id;
     const dateRange = req.query.dateRange || "thisMonth";
-    const data = await fn({ role, userId, dateRange });
+    const year      = req.query.year  || null;
+    const month     = req.query.month || null;
+    const day       = req.query.day   || null;
+    const data = await fn({ role, userId, dateRange, year, month, day });
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

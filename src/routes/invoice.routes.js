@@ -11,6 +11,7 @@ router.put('/:id/reject',  verifyToken, chairmanOnly, invoiceController.rejectBy
 
 router.get('/',    verifyToken, invoiceController.getAll);           // ← ADD
 router.get('/:id/download-pdf', verifyToken, invoiceController.downloadPdf);
+router.get('/:id/view-pdf', verifyToken, invoiceController.viewPdfById);   // NEW
 router.post('/',   verifyToken, invoiceController.create);           // ← ADD
 router.get('/approve/:token', invoiceController.approve);            // no auth — email link
 router.get('/reject/:token',  invoiceController.reject);             // no auth — email link

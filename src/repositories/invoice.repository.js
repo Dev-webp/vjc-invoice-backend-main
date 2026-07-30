@@ -178,7 +178,7 @@ $19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28
         COUNT(CASE WHEN status='Pending' THEN 1 END) as pending,
         COUNT(CASE WHEN status='Approved' THEN 1 END) as approved,
         COUNT(CASE WHEN status='Rejected' THEN 1 END) as rejected,
-        SUM(total_amount) as total_amount
+        COALESCE(SUM(CASE WHEN status != 'Rejected' THEN total_amount ELSE 0 END), 0) as total_amount
       FROM invoices
     `);
 

@@ -19,6 +19,14 @@ LEFT JOIN (
   ORDER BY customer_id, id DESC
 ) i
 ON c.id::text = i.customer_id
+LEFT JOIN (
+  SELECT DISTINCT ON (customer_id)
+    id,
+    customer_id
+  FROM invoices
+  ORDER BY customer_id, id DESC
+) any_inv
+ON c.id::text = any_inv.customer_id
 WHERE 1=1
 `;
     const values = [];
@@ -57,7 +65,7 @@ SELECT
   COALESCE(i.balance_amount, 0)   AS outstanding,
   COALESCE(i.paid_amount, 0)      AS total_payments,
   i.created_at                     AS last_transaction,
-   i.id                            AS last_invoice_id
+   any_inv.id                      AS last_invoice_id
 ${baseQuery}
 ORDER BY c.created_at DESC
 LIMIT $${i} OFFSET $${i + 1}

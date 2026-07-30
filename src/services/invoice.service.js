@@ -47,12 +47,13 @@ const invoiceService = {
   `UPDATE customers SET
     outstanding = outstanding + $2,
     total_payments = total_payments + $1,
-    last_transaction = NOW()
+    last_transaction = $4
    WHERE id = $3`,
  [
    approved.paid_amount || 0,
    approved.balance_amount || 0,
-   approved.customer_id
+   approved.customer_id,
+   approved.invoice_date
  ]
 );
 
@@ -128,15 +129,15 @@ const invoiceService = {
       `UPDATE customers SET
         outstanding = outstanding + $2,
         total_payments = total_payments + $1,
-        last_transaction = NOW()
+        last_transaction = $4
        WHERE id = $3`,
       [
         approved.paid_amount || 0,
         approved.balance_amount || 0,
-        approved.customer_id
+        approved.customer_id,
+        approved.invoice_date
       ]
     );
-
     let customerDetails = {};
     try {
       const custRes = await pool.query(

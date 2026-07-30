@@ -9,6 +9,9 @@ const emailService = {
     const rejectUrl =
       `https://vjc-invoice-backend-main.vercel.app/api/invoices/reject/${invoice.chairman_token}`;
 
+    const previewPdfUrl =
+      `https://vjc-invoice-backend-main.vercel.app/api/invoices/preview-pdf/${invoice.chairman_token}`;
+
     const html = `
 <style>
   @media only screen and (max-width: 600px) {
@@ -149,7 +152,14 @@ border-radius:8px;
 
 </div>
 ` : ''}
-<div style="margin-top:30px;text-align:center;">
+<div class="vjc-btn-wrap" style="margin-top:20px;text-align:center;">
+  <a href="${previewPdfUrl}" target="_blank" style="display:inline-block;background:#1976d2;color:#fff;
+    padding:12px 0;text-decoration:none;border-radius:6px;font-size:15px;
+    font-weight:700;width:92%;max-width:380px;margin:6px;">
+    📄 VIEW FULL INVOICE PDF
+  </a>
+</div>
+<div style="margin-top:10px;text-align:center;">
   <a href="${approveUrl}" style="display:inline-block;background:#2e7d32;color:#fff;
     padding:14px 0;text-decoration:none;border-radius:6px;font-size:16px;
     font-weight:700;width:45%;max-width:180px;margin:6px;">

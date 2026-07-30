@@ -1,6 +1,6 @@
 const invoiceService = require('../services/invoice.service');
 const cloudinary = require('../config/cloudinary');
-
+const pool = require('../config/db');   // NEW — for getRejected query
 const invoiceController = {
 
   getAll: async (req, res) => {
@@ -93,6 +93,18 @@ const invoiceController = {
     }
   },
 
+  // ✅ NEW: Rejected invoices only — for RejectedInvoices.jsx sidebar page
+  getRejected: async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
+      );
+      res.json({ success: true, invoices: result.rows });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  },
+
   approveById: async (req, res) => {
     try {
       const invoice = await invoiceService.approveInvoiceById(req.params.id);
@@ -124,6 +136,27 @@ const invoiceController = {
       res.status(400).json({ success: false, message: err.message });
     }
   },
-};
 
+  // ✅ NEW: Chairman mail "View PDF" — token-based, no login, inline preview
+  previewPdf: async (req, res) => {
+    try {
+      const { pdfBuffer, invoice_number } = await invoiceService.getInvoicePdfBufferByToken(req.params.token);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Invoice-${invoice_number}.pdf"`,
+        'Content-Length': pdfBuffer.length,
+      });
+      res.send(pdfBuffer);
+    } catch (err) {
+      res.status(400).send(`
+        <html>
+          <body style="font-family:Arial; text-align:center; padding:50px;">
+            <h1 style="color:#d32f2f;">❌ Error</h1>
+            <p>${err.message}</p>
+          </body>
+        </html>
+      `);
+    }
+  },
+};
 module.exports = invoiceController;

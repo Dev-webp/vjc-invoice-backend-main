@@ -183,6 +183,43 @@ const invoiceService = {
 
     return { pdfBuffer, invoice_number: invoice.invoice_number };
   },
+
+  // ✅ NEW: Chairman mail "View PDF" — token-based (no login), same PDF as client gets after approval
+  getInvoicePdfBufferByToken: async (token) => {
+    const pdfService = require('./pdf.service');
+    const invoice = await invoiceRepository.getByToken(token);
+    if (!invoice) throw new Error('Invalid or expired link');
+
+    let customerDetails = {};
+    try {
+      const custRes = await pool.query(
+        `SELECT customer_id, phone, address, city, state, gstin
+         FROM customers WHERE id = $1`,
+        [invoice.customer_id]
+      );
+      if (custRes.rows.length > 0) {
+        customerDetails = custRes.rows[0];
+      }
+    } catch (err) {
+      console.log('⚠️ Could not fetch customer details for preview PDF:', err.message);
+    }
+
+    const payload = {
+      ...invoice,
+      customer_id: customerDetails.customer_id || invoice.customer_id,
+      customer_phone: customerDetails.phone || invoice.customer_phone,
+      customer_address: customerDetails.address
+        ? `${customerDetails.address}${customerDetails.city ? ', ' + customerDetails.city : ''}${customerDetails.state ? ', ' + customerDetails.state : ''}`
+        : invoice.customer_address,
+      customer_gstin: customerDetails.gstin || invoice.customer_gstin,
+      customer_country: customerDetails.country || invoice.customer_country || 'India',
+    };
+
+    const html = emailService.buildClientInvoiceHtml(payload);
+    const pdfBuffer = await pdfService.generatePdfFromHtml(html);
+
+    return { pdfBuffer, invoice_number: invoice.invoice_number };
+  },
 };
 
 module.exports = invoiceService;

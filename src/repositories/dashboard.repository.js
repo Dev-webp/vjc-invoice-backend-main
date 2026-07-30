@@ -58,6 +58,7 @@ COALESCE((
   SELECT SUM(grand_total) FROM invoices
   WHERE DATE_TRUNC('month', invoice_date) = DATE_TRUNC('month', month_series)
     AND original_invoice_id IS NULL
+    AND status != 'Rejected'
   ${filter}
 ), 0) AS sales,
       COALESCE((

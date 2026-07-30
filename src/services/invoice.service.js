@@ -20,7 +20,17 @@ const invoiceService = {
       invoice_number,
       chairman_token,
     });
-    await emailService.sendChairmanApprovalMail(invoice);
+
+    // NEW — fetch sales consultant name for the chairman mail
+    let salesConsultantName = '—';
+    try {
+      const userRes = await pool.query(`SELECT name FROM users WHERE id = $1`, [data.created_by]);
+      if (userRes.rows.length > 0) salesConsultantName = userRes.rows[0].name;
+    } catch (err) {
+      console.log('⚠️ Could not fetch sales consultant name for mail:', err.message);
+    }
+
+    await emailService.sendChairmanApprovalMail({ ...invoice, sales_consultant: salesConsultantName });
     return invoice;
   },
 
@@ -86,9 +96,25 @@ const invoiceService = {
     return await invoiceRepository.reject(token);
   },
 
-  // ✅ NEW: Dashboard-based Approve/Reject (chairman logged in, no token)
+// ✅ NEW: Dashboard-based Approve/Reject (chairman logged in, no token)
   getPendingInvoices: async () => {
-    return await invoiceRepository.getPending();
+    const invoices = await invoiceRepository.getPending();
+
+    // NEW — attach sales consultant name (created_by → users.name)
+    const userIds = [...new Set(invoices.map(i => i.created_by).filter(Boolean))];
+    let usersMap = {};
+    if (userIds.length > 0) {
+      const usersRes = await pool.query(
+        `SELECT id, name FROM users WHERE id = ANY($1)`,
+        [userIds]
+      );
+      usersRes.rows.forEach(u => { usersMap[u.id] = u.name; });
+    }
+
+    return invoices.map(inv => ({
+      ...inv,
+      sales_consultant: usersMap[inv.created_by] || '—',
+    }));
   },
 
   approveInvoiceById: async (id) => {

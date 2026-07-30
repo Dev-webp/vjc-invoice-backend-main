@@ -83,6 +83,10 @@ Please review the invoice details below before approving or rejecting it.
       <td style="padding:10px 14px;font-weight:700;color:#444;">Invoice Number</td>
       <td style="padding:10px 14px;">${invoice.invoice_number}</td>
     </tr>
+    <tr style="background:#f8f9fa;">
+      <td style="padding:10px 14px;font-weight:700;color:#444;">Sales Consultant</td>
+      <td style="padding:10px 14px;">${invoice.sales_consultant || '—'}</td>
+    </tr>
     ${invoice.customer_gstin ? `
     <tr style="background:#f8f9fa;">
       <td style="padding:10px 14px;font-weight:700;color:#444;">GSTIN</td>

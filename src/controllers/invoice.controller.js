@@ -99,7 +99,25 @@ const invoiceController = {
       const result = await pool.query(
         `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
       );
-      res.json({ success: true, invoices: result.rows });
+      const invoices = result.rows;
+
+      // NEW — attach sales consultant name (created_by → users.name)
+      const userIds = [...new Set(invoices.map(i => i.created_by).filter(Boolean))];
+      let usersMap = {};
+      if (userIds.length > 0) {
+        const usersRes = await pool.query(
+          `SELECT id, name FROM users WHERE id = ANY($1)`,
+          [userIds]
+        );
+        usersRes.rows.forEach(u => { usersMap[u.id] = u.name; });
+      }
+
+      const withConsultant = invoices.map(inv => ({
+        ...inv,
+        sales_consultant: usersMap[inv.created_by] || '—',
+      }));
+
+      res.json({ success: true, invoices: withConsultant });
     } catch (err) {
       res.status(500).json({ success: false, message: err.message });
     }

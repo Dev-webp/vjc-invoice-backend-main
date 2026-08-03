@@ -169,9 +169,7 @@ if (!change || change.field !== 'leadgen') {
   return res.sendStatus(200);
 }
 
-// TEMP DEBUG - Force Graph API to use the test lead id
-const leadgenId = "2122292495383776";
-
+const leadgenId = change.value.leadgen_id;
 // Ignore Meta sample test payload
 // if (leadgenId === "444444444444") {
 //   console.log("Facebook sample webhook received.");

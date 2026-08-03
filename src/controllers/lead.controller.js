@@ -170,11 +170,12 @@ if (!change || change.field !== 'leadgen') {
 }
 
 const leadgenId = change.value.leadgen_id;
-// Ignore Meta sample test payload
-// if (leadgenId === "444444444444") {
-//   console.log("Facebook sample webhook received.");
-//   return res.sendStatus(200);
-// }
+
+// Ignore Meta sample webhook payload
+if (leadgenId === "444444444444") {
+  console.log("Facebook sample webhook received.");
+  return res.sendStatus(200);
+}
 
 const url =
   `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,form_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;

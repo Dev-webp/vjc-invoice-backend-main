@@ -203,10 +203,10 @@ const getField = (...names) => {
 
 await leadModel.createLeadFromWebhook({
   lead_name:
-    getField("full_name", "name", "full name") || "Facebook Lead",
+  (getField("full_name", "name", "full name") || "Facebook Lead").substring(0, 150),
 
-  contact_number:
-    getField("phone_number", "phone", "mobile"),
+contact_number:
+  (getField("phone_number", "phone", "mobile") || "").substring(0, 20),
 
   email:
     getField("email", "email address"),

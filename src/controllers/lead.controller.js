@@ -165,22 +165,23 @@ const receiveWebhookLead = async (req, res) => {
   try {
     const change = req.body.entry?.[0]?.changes?.[0];
 
-    if (!change || change.field !== 'leadgen') {
-      return res.sendStatus(200);
-    }
-
-    const leadgenId = change.value.leadgen_id;
-
-// Ignore Meta sample test payload
-if (leadgenId === "444444444444") {
-  console.log("Facebook sample webhook received.");
+if (!change || change.field !== 'leadgen') {
   return res.sendStatus(200);
 }
 
-const url =
-  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,ad_id,form_id,page_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+// TEMP DEBUG - Force Graph API to use the test lead id
+const leadgenId = "2122292495383776";
 
-    const response = await axios.get(url);
+// Ignore Meta sample test payload
+// if (leadgenId === "444444444444") {
+//   console.log("Facebook sample webhook received.");
+//   return res.sendStatus(200);
+// }
+
+const url =
+  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,form_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+
+const response = await axios.get(url);
 
 // Debug: Print complete Graph API response
 console.log("========== GRAPH API RESPONSE ==========");

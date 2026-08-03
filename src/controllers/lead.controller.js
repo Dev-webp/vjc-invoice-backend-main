@@ -180,7 +180,9 @@ const leadgenId = "2122292495383776";
 
 const url =
   `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,form_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
-
+console.log("Lead ID:", leadgenId);
+console.log("Access Token Exists:", !!process.env.FB_PAGE_ACCESS_TOKEN);
+console.log("Graph URL:", url);
 const response = await axios.get(url);
 
 // Debug: Print complete Graph API response
@@ -214,7 +216,8 @@ await leadModel.createLeadFromWebhook({
 
     return res.sendStatus(200);
   } catch (err) {
-    console.error('Facebook webhook error:', err.response?.data || err);
+    console.error("FACEBOOK ERROR:");
+console.log(JSON.stringify(err.response?.data || err, null, 2));
     return res.sendStatus(200);
   }
 };

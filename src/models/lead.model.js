@@ -50,9 +50,9 @@ const getAllLeads = async ({ role, userId, filters = {} }) => {
   const values = [];
   const conditions = [];
 
-  if (role !== 'chairman' && role !== 'mis-executive') {
+if (role !== 'chairman' && role !== 'mis-executive') {
     values.push(userId, userId);
-    conditions.push(`(l.created_by = $${values.length - 1} OR l.assigned_to = $${values.length})`);
+    conditions.push(`(l.created_by = $${values.length - 1} OR l.assigned_to = $${values.length} OR (l.created_by IS NULL AND l.assigned_to IS NULL))`);
   }
 
   if (filters.status) {

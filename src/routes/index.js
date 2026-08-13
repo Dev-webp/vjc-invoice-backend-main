@@ -13,7 +13,7 @@ const timeTrackingRoutes = require('./timetracking.routes');
 const reportRoutes = require('./report.routes'); 
 const dashboardRoutes = require('./dashboard.routes');
 const leadRoutes = require('./lead.routes'); 
-
+const departmentRoutes = require('./department.routes');
 router.use('/customers',          customerRoutes);
 router.use('/invoices',           invoiceRoutes);
 router.use('/items',              itemRoutes);
@@ -26,5 +26,5 @@ router.use('/timetracking', timeTrackingRoutes);
 router.use('/reports', reportRoutes);
 router.use('/dashboard', dashboardRoutes);   
 router.use('/leads', leadRoutes);    
-
+router.use('/departments', departmentRoutes);
 module.exports = router;

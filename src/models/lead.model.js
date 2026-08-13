@@ -118,7 +118,10 @@ const assignLead = async (id, branch, staffId, assignedBy) => {
 const assignLeadsBulk = async (ids, branch, staffId, assignedBy) => {
   const result = await pool.query(
     `UPDATE leads
-     SET branch = $1, assigned_to = $2, assigned_by = $3, updated_at = NOW()
+     SET branch = $1, assigned_to = $2, assigned_by = $3, updated_at = NOW(),
+         assigned_at = NOW(),
+         sla_deadline = NOW() + INTERVAL '30 minutes',
+         red_flag_triggered = false
      WHERE id = ANY($4::int[])
      RETURNING *`,
     [branch, staffId, assignedBy, ids]

@@ -221,6 +221,46 @@ const createLeadFromWebhook = async ({ lead_name, contact_number, email, source 
   return result.rows[0];
 };
 
+// ▼▼▼ NEW — paste this block right here ▼▼▼
+const autoAssignLead = async (leadId, staffId, departmentId) => {
+  const result = await pool.query(
+    `UPDATE leads
+     SET assigned_to = $1,
+         department_id = $2,
+         assigned_at = NOW(),
+         sla_deadline = NOW() + INTERVAL '30 minutes',
+         red_flag_triggered = false,
+         updated_at = NOW()
+     WHERE id = $3
+     RETURNING *`,
+    [staffId, departmentId, leadId]
+  );
+  return result.rows[0];
+};
+
+const getExpiredSlaLeads = async () => {
+  const result = await pool.query(
+    `SELECT l.* FROM leads l
+     WHERE l.sla_deadline IS NOT NULL
+       AND l.sla_deadline < NOW()
+       AND l.red_flag_triggered = false
+       AND l.assigned_to IS NOT NULL
+       AND l.status = 'New'
+       AND NOT EXISTS (
+         SELECT 1 FROM lead_notes n
+         WHERE n.lead_id = l.id
+           AND n.commented_by = l.assigned_to
+           AND n.created_at > l.assigned_at
+       )`
+  );
+  return result.rows;
+};
+
+const markRedFlagTriggered = async (leadId) => {
+  await pool.query(`UPDATE leads SET red_flag_triggered = true WHERE id = $1`, [leadId]);
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   createLead,
   getAllLeads,
@@ -232,4 +272,7 @@ module.exports = {
   addNoteToLead,
   getLeadProfileHistory,
   createLeadFromWebhook,
+  autoAssignLead,
+  getExpiredSlaLeads,
+  markRedFlagTriggered,
 };

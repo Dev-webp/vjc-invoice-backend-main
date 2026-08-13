@@ -12,14 +12,31 @@ const create = async (req, res) => {
       });
     }
 
-    // req.user is set by verifyToken middleware -> { id, name, role, branch }
     const createdBy = req.user.id || req.user.userId || req.user._id;
     const lead = await leadModel.createLead(
       { ...req.body, branch: req.body.branch || req.user.location },
       createdBy
     );
 
-    res.json({ success: true, lead });
+    let finalLead = lead;
+    try {
+      if (lead.service_type) {
+        const departmentModel = require('../models/department.model');
+        const departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
+        if (departmentId) {
+          const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
+          if (staffId) {
+            finalLead = await leadModel.autoAssignLead(lead.id, staffId, departmentId);
+          } else {
+            console.warn(`No available staff (all absent?) for department ${departmentId}`);
+          }
+        }
+      }
+    } catch (assignErr) {
+      console.error('Auto-assign error (non-fatal):', assignErr);
+    }
+
+    res.json({ success: true, lead: finalLead });
   } catch (err) {
     console.error('Create lead error:', err);
     res.status(500).json({ success: false, message: 'Failed to create lead' });

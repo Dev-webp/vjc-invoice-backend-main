@@ -24,6 +24,28 @@ const ensureTables = async () => {
     ALTER TABLE leads ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id)
   `);
 
+  // ▼▼▼ NEW — paste this block right here ▼▼▼
+  await pool.query(`
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP DEFAULT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS sla_deadline TIMESTAMP DEFAULT NULL
+  `);
+  await pool.query(`
+    ALTER TABLE leads ADD COLUMN IF NOT EXISTS red_flag_triggered BOOLEAN DEFAULT false
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS agent_red_flags (
+      id SERIAL PRIMARY KEY,
+      staff_id INTEGER NOT NULL,
+      lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE,
+      flag_date DATE DEFAULT CURRENT_DATE,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  // ▲▲▲ NEW block ends here ▲▲▲
+
   // Seed the 5 BRD departments if they don't exist yet.
   const names = [
     'Study Visas',
@@ -75,13 +97,27 @@ const removeStaffFromDepartment = async (departmentId, staffId) => {
 
 // Round-robin: picks the staff member in this department who was
 // assigned longest ago (or never), then stamps their last_assigned_at.
-const pickNextStaffForDepartment = async (departmentId) => {
+const pickNextStaffForDepartment = async (departmentId, excludeStaffId = null) => {
+  const params = [departmentId];
+  let excludeClause = '';
+  if (excludeStaffId) {
+    params.push(excludeStaffId);
+    excludeClause = `AND ds.staff_id != $${params.length}`;
+  }
+
   const result = await pool.query(
-    `SELECT staff_id FROM department_staff
-     WHERE department_id = $1
-     ORDER BY last_assigned_at ASC NULLS FIRST
+    `SELECT ds.staff_id FROM department_staff ds
+     WHERE ds.department_id = $1
+       ${excludeClause}
+       AND ds.staff_id NOT IN (
+         SELECT staff_id FROM agent_red_flags
+         WHERE flag_date = CURRENT_DATE
+         GROUP BY staff_id
+         HAVING COUNT(*) >= 3
+       )
+     ORDER BY ds.last_assigned_at ASC NULLS FIRST
      LIMIT 1`,
-    [departmentId]
+    params
   );
   if (!result.rows[0]) return null;
 
@@ -102,6 +138,24 @@ const getDepartmentIdByServiceType = async (serviceType) => {
   return result.rows[0]?.id || null;
 };
 
+// ▼▼▼ NEW — paste this block right here ▼▼▼
+const addRedFlag = async (staffId, leadId) => {
+  await pool.query(
+    `INSERT INTO agent_red_flags (staff_id, lead_id) VALUES ($1, $2)`,
+    [staffId, leadId]
+  );
+};
+
+const getRedFlagCountToday = async (staffId) => {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM agent_red_flags
+     WHERE staff_id = $1 AND flag_date = CURRENT_DATE`,
+    [staffId]
+  );
+  return result.rows[0].count;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   ensureTables,
   getAllDepartments,
@@ -109,4 +163,6 @@ module.exports = {
   removeStaffFromDepartment,
   pickNextStaffForDepartment,
   getDepartmentIdByServiceType,
+  addRedFlag,
+  getRedFlagCountToday,
 };

@@ -240,7 +240,13 @@ const autoAssignLead = async (leadId, staffId, departmentId) => {
   );
   return result.rows[0];
 };
-
+const logAssignmentHistory = async (leadId, staffId, reason) => {
+  await pool.query(
+    `INSERT INTO lead_assignment_history (lead_id, assigned_to, assigned_by, reason)
+     VALUES ($1, $2, NULL, $3)`,
+    [leadId, staffId, reason]
+  );
+};
 const getExpiredSlaLeads = async () => {
   const result = await pool.query(
     `SELECT l.* FROM leads l
@@ -278,4 +284,5 @@ module.exports = {
   autoAssignLead,
   getExpiredSlaLeads,
   markRedFlagTriggered,
+  logAssignmentHistory,
 };

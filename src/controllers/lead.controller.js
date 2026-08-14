@@ -25,8 +25,9 @@ const create = async (req, res) => {
         const departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
         if (departmentId) {
           const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
-          if (staffId) {
+         if (staffId) {
             finalLead = await leadModel.autoAssignLead(lead.id, staffId, departmentId);
+            await leadModel.logAssignmentHistory(lead.id, staffId, 'auto_round_robin');
           } else {
             console.warn(`No available staff (all absent?) for department ${departmentId}`);
           }

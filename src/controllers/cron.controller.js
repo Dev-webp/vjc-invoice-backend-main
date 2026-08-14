@@ -45,6 +45,7 @@ const slaCheck = async (req, res) => {
         if (nextStaffId) {
           // 3. Auto-shuffle: reassign + reset 30-min timer
           await leadModel.autoAssignLead(lead.id, nextStaffId, lead.department_id);
+          await leadModel.logAssignmentHistory(lead.id, nextStaffId, 'auto_shuffle_sla_breach');
           results.reassigned += 1;
         } else {
           // Nobody else available (everyone absent today / only 1 staff in dept)

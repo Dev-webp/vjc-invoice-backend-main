@@ -172,6 +172,33 @@ const getProfileHistory = async (req, res) => {
   }
 };
 
+// ▼▼▼ NEW — paste this block right here ▼▼▼
+// GET /api/leads/reminders/due — logged-in agent's own due reminders
+const getDueReminders = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const reminders = await leadModel.getDueReminders(staffId);
+    res.json({ success: true, reminders });
+  } catch (err) {
+    console.error('Get due reminders error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch reminders' });
+  }
+};
+
+// PUT /api/leads/reminders/:noteId/dismiss
+const dismissReminder = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const note = await leadModel.dismissReminder(req.params.noteId, staffId);
+    if (!note) return res.status(404).json({ success: false, message: 'Reminder not found' });
+    res.json({ success: true, note });
+  } catch (err) {
+    console.error('Dismiss reminder error:', err);
+    res.status(500).json({ success: false, message: 'Failed to dismiss reminder' });
+  }
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 // GET /api/leads/facebook/webhook — Meta verification handshake
 const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
@@ -252,4 +279,6 @@ module.exports = {
   create, getAll, getById, assign, updateStatus, getNotes, addNote, getProfileHistory,
   verifyWebhook,
   receiveWebhookLead,
+  getDueReminders,
+  dismissReminder,
 };

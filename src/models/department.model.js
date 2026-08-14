@@ -44,8 +44,12 @@ const ensureTables = async () => {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `);
-   await pool.query(`
+await pool.query(`
     ALTER TABLE lead_assignment_history ADD COLUMN IF NOT EXISTS reason VARCHAR(50) DEFAULT 'manual'
+  `);
+
+  await pool.query(`
+    ALTER TABLE lead_notes ADD COLUMN IF NOT EXISTS dismissed BOOLEAN DEFAULT false
   `);
   // ▲▲▲ NEW block ends here ▲▲▲
 

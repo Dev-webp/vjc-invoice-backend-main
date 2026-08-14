@@ -247,6 +247,35 @@ const logAssignmentHistory = async (leadId, staffId, reason) => {
     [leadId, staffId, reason]
   );
 };
+
+// ▼▼▼ NEW — paste this block right here ▼▼▼
+const getDueReminders = async (staffId) => {
+  const result = await pool.query(
+    `SELECT n.id AS note_id, n.remark, n.reminder_date, n.reminder_time,
+            l.id AS lead_id, l.lead_name
+     FROM lead_notes n
+     JOIN leads l ON l.id = n.lead_id
+     WHERE n.commented_by = $1
+       AND n.add_to_reminder = true
+       AND n.dismissed = false
+       AND n.reminder_date IS NOT NULL
+       AND (n.reminder_date + COALESCE(n.reminder_time, '00:00'::time)) <= NOW()
+     ORDER BY n.reminder_date, n.reminder_time`,
+    [staffId]
+  );
+  return result.rows;
+};
+
+const dismissReminder = async (noteId, staffId) => {
+  const result = await pool.query(
+    `UPDATE lead_notes SET dismissed = true
+     WHERE id = $1 AND commented_by = $2
+     RETURNING *`,
+    [noteId, staffId]
+  );
+  return result.rows[0];
+};
+// ▲▲▲ NEW block ends here ▲▲▲
 const getExpiredSlaLeads = async () => {
   const result = await pool.query(
     `SELECT l.* FROM leads l
@@ -285,4 +314,6 @@ module.exports = {
   getExpiredSlaLeads,
   markRedFlagTriggered,
   logAssignmentHistory,
+  getDueReminders,
+  dismissReminder,
 };

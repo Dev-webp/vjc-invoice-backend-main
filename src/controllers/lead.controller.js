@@ -100,6 +100,16 @@ const assign = async (req, res) => {
       });
     }
 
+    // ── NEW: block manual assignment to an agent marked "Absent" today ──
+    const departmentModel = require('../models/department.model');
+    const redFlagCount = await departmentModel.getRedFlagCountToday(staff_id);
+    if (redFlagCount >= 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'This staff member has 3+ Red Flags today and is marked Absent. Cannot assign leads to them today.',
+      });
+    }
+
     const assignedBy = req.user.id || req.user.userId || req.user._id;
     const updated = await leadModel.assignLeadsBulk(ids, branch, staff_id, assignedBy);
 
@@ -109,7 +119,6 @@ const assign = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to assign lead' });
   }
 };
-
 // PUT /api/leads/:id/status — change status (Warm/Cold/Prospect/HOLD/etc.)
 const updateStatus = async (req, res) => {
   try {

@@ -213,17 +213,16 @@ const getLeadProfileHistory = async (leadId) => {
 };
 
 // ── Create a lead coming from Facebook/Instagram webhook ────────────────────
-const createLeadFromWebhook = async ({ lead_name, contact_number, email, source }) => {
+const createLeadFromWebhook = async ({ lead_name, contact_number, email, source, last_remark }) => {
   const result = await pool.query(
     `INSERT INTO leads
-      (lead_name, contact_number, email, source, created_by, status)
-     VALUES ($1,$2,$3,$4,$5,'New')
+      (lead_name, contact_number, email, source, last_remark, created_by, status)
+     VALUES ($1,$2,$3,$4,$5,$6,'New')
      RETURNING *`,
-    [lead_name, contact_number, email || null, source, null]
+    [lead_name, contact_number, email || null, source, last_remark || null, null]
   );
   return result.rows[0];
 };
-
 // ▼▼▼ NEW — paste this block right here ▼▼▼
 const autoAssignLead = async (leadId, staffId, departmentId) => {
   const result = await pool.query(

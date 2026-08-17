@@ -258,6 +258,14 @@ const getField = (...names) => {
   return field?.values?.[0] || '';
 };
 
+// Any extra fields the client filled (education, work experience, etc.)
+// beyond name/phone/email — joined into a readable summary for Last Remark.
+const capturedNames = ["full_name", "name", "phone_number", "phone", "mobile", "email"];
+const extraFieldsSummary = fieldData
+  .filter(f => !capturedNames.some(n => f.name?.toLowerCase().includes(n)))
+  .map(f => `${f.name} - ${f.values?.[0] || ''}`)
+  .join(", ");
+
 await leadModel.createLeadFromWebhook({
   lead_name:
   (getField("full_name", "name", "full name") || "Facebook Lead").substring(0, 150),
@@ -269,8 +277,8 @@ contact_number:
     getField("email", "email address"),
 
 source: sourcePlatform,
+last_remark: extraFieldsSummary || null,
 });
-
     return res.sendStatus(200);
   } catch (err) {
     console.error("FACEBOOK ERROR:");

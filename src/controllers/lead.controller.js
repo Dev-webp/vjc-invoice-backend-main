@@ -232,7 +232,7 @@ if (leadgenId === "444444444444") {
 }
 
 const url =
-  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,form_id&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
+  `https://graph.facebook.com/v24.0/${leadgenId}?fields=field_data,created_time,form_id,platform&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`;
 console.log("Lead ID:", leadgenId);
 console.log("Access Token Exists:", !!process.env.FB_PAGE_ACCESS_TOKEN);
 console.log("Graph URL:", url);
@@ -244,6 +244,10 @@ console.log(JSON.stringify(response.data, null, 2));
 console.log("========================================");
 
 const fieldData = response.data.field_data || [];
+
+// Meta's leadgen object returns "platform" as "ig" for Instagram-sourced
+// leads. Anything else (or missing) defaults to "Facebook" — same as before.
+const sourcePlatform = response.data.platform === "ig" ? "Instagram" : "Facebook";
 
 const getField = (...names) => {
   const field = fieldData.find(f =>
@@ -264,7 +268,7 @@ contact_number:
   email:
     getField("email", "email address"),
 
-  source: "Facebook",
+source: sourcePlatform,
 });
 
     return res.sendStatus(200);

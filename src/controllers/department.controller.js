@@ -38,4 +38,24 @@ const removeStaff = async (req, res) => {
   }
 };
 
-module.exports = { getAll, addStaff, removeStaff };
+// POST /api/departments/staff/online  { email }
+// POST /api/departments/staff/offline { email }
+const setOnlineStatus = (isOnline) => async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'email is required' });
+    const updated = await departmentModel.setStaffOnlineByEmail(email, isOnline);
+    res.json({ success: true, updated: updated.length });
+  } catch (err) {
+    console.error('Set online status error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update status' });
+  }
+};
+
+module.exports = {
+  getAll,
+  addStaff,
+  removeStaff,
+  setOnline: setOnlineStatus(true),
+  setOffline: setOnlineStatus(false),
+};

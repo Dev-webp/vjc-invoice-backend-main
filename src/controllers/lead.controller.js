@@ -306,7 +306,7 @@ const extraFieldsSummary = fieldData
   .map(f => `${f.name} - ${f.values?.[0] || ''}`)
   .join(", ");
 
-await leadModel.createLeadFromWebhook({
+const newLead = await leadModel.createLeadFromWebhook({
   lead_name:
   (getField("full_name", "name", "full name") || "Facebook Lead").substring(0, 150),
 
@@ -319,6 +319,37 @@ contact_number:
 source: sourcePlatform,
 last_remark: extraFieldsSummary || null,
 });
+
+// ▼▼▼ NEW — auto department + round-robin assign for FB/Insta leads ▼▼▼
+try {
+  const departmentModel = require('../models/department.model');
+  let formName = '';
+  try {
+    const formRes = await axios.get(
+      `https://graph.facebook.com/v24.0/${change.value.form_id}?fields=name&access_token=${process.env.FB_PAGE_ACCESS_TOKEN}`
+    );
+    formName = formRes.data.name || '';
+  } catch (formErr) {
+    console.error('Fetch form name error (non-fatal):', formErr.message);
+  }
+
+  const matchText = `${formName} ${extraFieldsSummary || ''}`;
+  const departmentId = await departmentModel.getDepartmentIdByKeywordMatch(matchText);
+
+  if (departmentId) {
+    const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
+    if (staffId) {
+      await leadModel.autoAssignLead(newLead.id, staffId, departmentId);
+      await leadModel.logAssignmentHistory(newLead.id, staffId, 'auto_round_robin_fb');
+    } else {
+      console.warn(`No online staff available for department ${departmentId} — lead ${newLead.id} pending assignment`);
+    }
+  }
+} catch (assignErr) {
+  console.error('FB lead auto-assign error (non-fatal):', assignErr);
+}
+// ▲▲▲ NEW block ends here ▲▲▲
+
     return res.sendStatus(200);
   } catch (err) {
     console.error("FACEBOOK ERROR:");
@@ -334,8 +365,6 @@ module.exports = {
   getDueReminders,
   dismissReminder,
   getNewAssignments,
-  markAssignmentNotified,
-   getNewAssignments,
   markAssignmentNotified,
   getAllAssignmentsToday,
 };

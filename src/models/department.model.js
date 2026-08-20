@@ -119,6 +119,7 @@ const pickNextStaffForDepartment = async (departmentId, excludeStaffId = null) =
   const result = await pool.query(
     `SELECT ds.staff_id FROM department_staff ds
      WHERE ds.department_id = $1
+       AND ds.is_online = true
        ${excludeClause}
        AND ds.staff_id NOT IN (
          SELECT staff_id FROM agent_red_flags
@@ -149,6 +150,30 @@ const getDepartmentIdByServiceType = async (serviceType) => {
   return result.rows[0]?.id || null;
 };
 
+// ▼▼▼ NEW — keyword-based department matching for Facebook/Instagram leads ▼▼▼
+// Form names like "Germany Student Visa", "Canada Study", "UK Study",
+// "Poland Study" all contain "study" → all map to "Study Visas".
+const DEPARTMENT_KEYWORDS = {
+  'Study Visas': ['study', 'student visa'],
+  'Immigration / PR': ['immigration', 'pr ', ' pr', 'permanent residency'],
+  'Visitor Visas / Tourism Packages': ['visitor', 'tourism', 'tourist'],
+  'Air Tickets Enquiries': ['air ticket', 'flight'],
+  'Forex Enquiries': ['forex', 'currency'],
+};
+
+const getDepartmentIdByKeywordMatch = async (text) => {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  for (const [deptName, keywords] of Object.entries(DEPARTMENT_KEYWORDS)) {
+    if (keywords.some((kw) => lower.includes(kw))) {
+      const result = await pool.query(`SELECT id FROM departments WHERE name = $1`, [deptName]);
+      if (result.rows[0]) return result.rows[0].id;
+    }
+  }
+  return null;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 // ▼▼▼ NEW — paste this block right here ▼▼▼
 const addRedFlag = async (staffId, leadId) => {
   await pool.query(
@@ -167,6 +192,20 @@ const getRedFlagCountToday = async (staffId) => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// ▼▼▼ NEW — online/offline staff status (HRM login/logout sync) ▼▼▼
+const setStaffOnlineByEmail = async (email, isOnline) => {
+  const result = await pool.query(
+    `UPDATE department_staff ds
+     SET is_online = $1
+     FROM users u
+     WHERE ds.staff_id = u.id AND u.email = $2
+     RETURNING ds.staff_id`,
+    [isOnline, email]
+  );
+  return result.rows;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   ensureTables,
   getAllDepartments,
@@ -176,4 +215,6 @@ module.exports = {
   getDepartmentIdByServiceType,
   addRedFlag,
   getRedFlagCountToday,
+  setStaffOnlineByEmail,
+  getDepartmentIdByKeywordMatch,
 };

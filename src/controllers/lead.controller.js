@@ -237,6 +237,21 @@ const getAllAssignmentsToday = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch assignments' });
   }
 };
+
+// GET /api/leads/pending-assignment — chairman/mis-executive only
+const getPendingAssignments = async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (role !== 'chairman' && role !== 'mis-executive') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    const leads = await leadModel.getPendingAssignmentLeads();
+    res.json({ success: true, leads });
+  } catch (err) {
+    console.error('Get pending assignments error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch pending leads' });
+  }
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 
 // GET /api/leads/facebook/webhook — Meta verification handshake
@@ -367,4 +382,5 @@ module.exports = {
   getNewAssignments,
   markAssignmentNotified,
   getAllAssignmentsToday,
+  getPendingAssignments,
 };

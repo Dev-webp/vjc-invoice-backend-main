@@ -16,6 +16,8 @@ router.post('/:id/notes',           verifyToken, leadController.addNote);
 router.get('/:id/profile-history',  verifyToken, leadController.getProfileHistory);
 router.get('/reminders/due',            verifyToken, leadController.getDueReminders);
 router.put('/reminders/:noteId/dismiss', verifyToken, leadController.dismissReminder);
+router.get('/assignments/today',        verifyToken, leadController.getAllAssignmentsToday);
+router.get('/pending-assignment',       verifyToken, leadController.getPendingAssignments);
 router.get('/assignments/new',                  verifyToken, leadController.getNewAssignments);
 router.put('/assignments/:historyId/notified',  verifyToken, leadController.markAssignmentNotified);
 router.get('/assignments/today',                verifyToken, leadController.getAllAssignmentsToday);

@@ -345,6 +345,20 @@ const markRedFlagTriggered = async (leadId) => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// ▼▼▼ NEW — Pending Assignment (chairman-only): leads nobody was online to receive ▼▼▼
+const getPendingAssignmentLeads = async () => {
+  const result = await pool.query(
+    `SELECT l.*, d.name AS department_name
+     FROM leads l
+     LEFT JOIN departments d ON d.id = l.department_id
+     WHERE l.assigned_to IS NULL
+       AND l.source IN ('Facebook', 'Instagram')
+     ORDER BY l.created_at DESC`
+  );
+  return result.rows;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   createLead,
   getAllLeads,
@@ -364,7 +378,6 @@ module.exports = {
   dismissReminder,
   getNewAssignments,
   markAssignmentNotified,
-  getNewAssignments,
-  markAssignmentNotified,
   getAllAssignmentsToday,
+  getPendingAssignmentLeads,
 };

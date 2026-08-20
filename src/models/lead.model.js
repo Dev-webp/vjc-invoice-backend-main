@@ -116,15 +116,22 @@ const assignLead = async (id, branch, staffId, assignedBy) => {
 
 // ── Bulk assign (checkbox multi-select like screenshot 5/6) ─────────────────
 const assignLeadsBulk = async (ids, branch, staffId, assignedBy) => {
+  const deptResult = await pool.query(
+    `SELECT department_id FROM department_staff WHERE staff_id = $1 LIMIT 1`,
+    [staffId]
+  );
+  const departmentId = deptResult.rows[0]?.department_id || null;
+
   const result = await pool.query(
     `UPDATE leads
      SET branch = $1, assigned_to = $2, assigned_by = $3, updated_at = NOW(),
          assigned_at = NOW(),
          sla_deadline = NOW() + INTERVAL '30 minutes',
-         red_flag_triggered = false
+         red_flag_triggered = false,
+         department_id = $5
      WHERE id = ANY($4::int[])
      RETURNING *`,
-    [branch, staffId, assignedBy, ids]
+    [branch, staffId, assignedBy, ids, departmentId]
   );
 
   // Logs this assignment so screenshot 4's "ASSIGNED HISTORY" table has data.

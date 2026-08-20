@@ -305,6 +305,22 @@ const markAssignmentNotified = async (historyId, staffId) => {
   );
   return result.rows[0];
 };
+
+// ▼▼▼ NEW — paste this block right here ▼▼▼
+// Chairman/mis-executive only — every assignment made today, across all agents
+const getAllAssignmentsToday = async () => {
+  const result = await pool.query(
+    `SELECT h.id AS history_id, h.lead_id, h.reason, h.assigned_date,
+            l.lead_name, u.name AS assigned_to_name
+     FROM lead_assignment_history h
+     JOIN leads l ON l.id = h.lead_id
+     LEFT JOIN users u ON u.id = h.assigned_to
+     WHERE h.assigned_date::date = CURRENT_DATE
+     ORDER BY h.assigned_date DESC`
+  );
+  return result.rows;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
 // ▲▲▲ NEW block ends here ▲▲▲
 const getExpiredSlaLeads = async () => {
   const result = await pool.query(
@@ -348,4 +364,7 @@ module.exports = {
   dismissReminder,
   getNewAssignments,
   markAssignmentNotified,
+  getNewAssignments,
+  markAssignmentNotified,
+  getAllAssignmentsToday,
 };

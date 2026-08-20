@@ -222,6 +222,21 @@ const markAssignmentNotified = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to update' });
   }
 };
+
+// GET /api/leads/assignments/today — chairman/mis-executive only
+const getAllAssignmentsToday = async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (role !== 'chairman' && role !== 'mis-executive') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    const assignments = await leadModel.getAllAssignmentsToday();
+    res.json({ success: true, assignments });
+  } catch (err) {
+    console.error('Get all assignments today error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch assignments' });
+  }
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 
 // GET /api/leads/facebook/webhook — Meta verification handshake
@@ -320,4 +335,7 @@ module.exports = {
   dismissReminder,
   getNewAssignments,
   markAssignmentNotified,
+   getNewAssignments,
+  markAssignmentNotified,
+  getAllAssignmentsToday,
 };

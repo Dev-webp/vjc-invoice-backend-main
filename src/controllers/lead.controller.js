@@ -197,6 +197,31 @@ const dismissReminder = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to dismiss reminder' });
   }
 };
+
+// GET /api/leads/assignments/new — logged-in agent's un-notified assignments
+const getNewAssignments = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const assignments = await leadModel.getNewAssignments(staffId);
+    res.json({ success: true, assignments });
+  } catch (err) {
+    console.error('Get new assignments error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch assignments' });
+  }
+};
+
+// PUT /api/leads/assignments/:historyId/notified
+const markAssignmentNotified = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const row = await leadModel.markAssignmentNotified(req.params.historyId, staffId);
+    if (!row) return res.status(404).json({ success: false, message: 'Assignment not found' });
+    res.json({ success: true, row });
+  } catch (err) {
+    console.error('Mark assignment notified error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update' });
+  }
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 
 // GET /api/leads/facebook/webhook — Meta verification handshake
@@ -293,4 +318,6 @@ module.exports = {
   receiveWebhookLead,
   getDueReminders,
   dismissReminder,
+  getNewAssignments,
+  markAssignmentNotified,
 };

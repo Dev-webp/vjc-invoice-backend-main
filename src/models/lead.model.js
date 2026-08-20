@@ -281,6 +281,30 @@ const dismissReminder = async (noteId, staffId) => {
   );
   return result.rows[0];
 };
+
+const getNewAssignments = async (staffId) => {
+  const result = await pool.query(
+    `SELECT h.id AS history_id, h.lead_id, h.reason, h.assigned_date,
+            l.lead_name
+     FROM lead_assignment_history h
+     JOIN leads l ON l.id = h.lead_id
+     WHERE h.assigned_to = $1
+       AND h.notified = false
+     ORDER BY h.assigned_date ASC`,
+    [staffId]
+  );
+  return result.rows;
+};
+
+const markAssignmentNotified = async (historyId, staffId) => {
+  const result = await pool.query(
+    `UPDATE lead_assignment_history SET notified = true
+     WHERE id = $1 AND assigned_to = $2
+     RETURNING *`,
+    [historyId, staffId]
+  );
+  return result.rows[0];
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 const getExpiredSlaLeads = async () => {
   const result = await pool.query(
@@ -322,4 +346,6 @@ module.exports = {
   logAssignmentHistory,
   getDueReminders,
   dismissReminder,
+  getNewAssignments,
+  markAssignmentNotified,
 };

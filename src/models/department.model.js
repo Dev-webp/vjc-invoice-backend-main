@@ -49,6 +49,10 @@ await pool.query(`
   `);
 
   await pool.query(`
+    ALTER TABLE lead_assignment_history ADD COLUMN IF NOT EXISTS notified BOOLEAN DEFAULT false
+  `);
+
+  await pool.query(`
     ALTER TABLE lead_notes ADD COLUMN IF NOT EXISTS dismissed BOOLEAN DEFAULT false
   `);
   // ▲▲▲ NEW block ends here ▲▲▲

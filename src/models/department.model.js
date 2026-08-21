@@ -154,11 +154,11 @@ const getDepartmentIdByServiceType = async (serviceType) => {
 // Form names like "Germany Student Visa", "Canada Study", "UK Study",
 // "Poland Study" all contain "study" → all map to "Study Visas".
 const DEPARTMENT_KEYWORDS = {
-  'Study Visas': ['study', 'student visa'],
-  'Immigration / PR': ['immigration', 'pr ', ' pr', 'permanent residency'],
-  'Visitor Visas / Tourism Packages': ['visitor', 'tourism', 'tourist'],
-  'Air Tickets Enquiries': ['air ticket', 'flight'],
-  'Forex Enquiries': ['forex', 'currency'],
+  'Study Visas': ['study', 'student visa', 'student', 'university', 'course', 'intake', 'ielts'],
+  'Immigration / PR': ['immigration', 'pr ', ' pr', 'permanent residency', 'opp card', 'opportunity card', 'job seeker', 'work visa', 'skilled worker'],
+  'Visitor Visas / Tourism Packages': ['visitor', 'tourism', 'tourist', 'travel'],
+  'Air Tickets Enquiries': ['air ticket', 'flight', 'airfare'],
+  'Forex Enquiries': ['forex', 'currency', 'exchange'],
 };
 
 const getDepartmentIdByKeywordMatch = async (text) => {

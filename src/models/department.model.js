@@ -199,7 +199,7 @@ const setStaffOnlineByEmail = async (email, isOnline) => {
      SET is_online = $1
      FROM users u
      WHERE ds.staff_id = u.id AND u.email = $2
-     RETURNING ds.staff_id`,
+     RETURNING ds.staff_id, ds.department_id`,
     [isOnline, email]
   );
   return result.rows;

@@ -230,6 +230,23 @@ const createLeadFromWebhook = async ({ lead_name, contact_number, email, source,
   );
   return result.rows[0];
 };
+
+// ▼▼▼ NEW — pending lead department tracking + fetch ▼▼▼
+const setLeadDepartment = async (leadId, departmentId) => {
+  await pool.query(`UPDATE leads SET department_id = $1 WHERE id = $2`, [departmentId, leadId]);
+};
+
+const getPendingLeadsForDepartment = async (departmentId) => {
+  const result = await pool.query(
+    `SELECT * FROM leads
+     WHERE assigned_to IS NULL AND department_id = $1
+     ORDER BY created_at ASC`,
+    [departmentId]
+  );
+  return result.rows;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 // ▼▼▼ NEW — paste this block right here ▼▼▼
 const autoAssignLead = async (leadId, staffId, departmentId) => {
   const result = await pool.query(
@@ -380,4 +397,6 @@ module.exports = {
   markAssignmentNotified,
   getAllAssignmentsToday,
   getPendingAssignmentLeads,
+  setLeadDepartment,
+  getPendingLeadsForDepartment,
 };

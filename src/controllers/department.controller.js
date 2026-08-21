@@ -1,4 +1,5 @@
 const departmentModel = require('../models/department.model');
+const leadModel = require('../models/lead.model');
 
 // GET /api/departments
 const getAll = async (req, res) => {
@@ -45,6 +46,23 @@ const setOnlineStatus = (isOnline) => async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ success: false, message: 'email is required' });
     const updated = await departmentModel.setStaffOnlineByEmail(email, isOnline);
+
+    // ▼▼▼ NEW — when an employee comes online, drain any pending leads
+    // waiting for their department(s), oldest first, via round-robin ▼▼▼
+    if (isOnline) {
+      for (const row of updated) {
+        if (!row.department_id) continue;
+        let pendingLeads = await leadModel.getPendingLeadsForDepartment(row.department_id);
+        for (const lead of pendingLeads) {
+          const staffId = await departmentModel.pickNextStaffForDepartment(row.department_id);
+          if (!staffId) break; // nobody online in this department anymore
+          await leadModel.autoAssignLead(lead.id, staffId, row.department_id);
+          await leadModel.logAssignmentHistory(lead.id, staffId, 'auto_round_robin_on_login');
+        }
+      }
+    }
+    // ▲▲▲ NEW block ends here ▲▲▲
+
     res.json({ success: true, updated: updated.length });
   } catch (err) {
     console.error('Set online status error:', err);

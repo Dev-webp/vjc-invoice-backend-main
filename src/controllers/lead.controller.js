@@ -351,12 +351,13 @@ try {
   const matchText = `${formName} ${extraFieldsSummary || ''}`;
   const departmentId = await departmentModel.getDepartmentIdByKeywordMatch(matchText);
 
-  if (departmentId) {
+    if (departmentId) {
     const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
     if (staffId) {
       await leadModel.autoAssignLead(newLead.id, staffId, departmentId);
       await leadModel.logAssignmentHistory(newLead.id, staffId, 'auto_round_robin_fb');
     } else {
+      await leadModel.setLeadDepartment(newLead.id, departmentId);
       console.warn(`No online staff available for department ${departmentId} — lead ${newLead.id} pending assignment`);
     }
   }

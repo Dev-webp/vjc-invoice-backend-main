@@ -162,15 +162,19 @@ const DEPARTMENT_KEYWORDS = {
 };
 
 const getDepartmentIdByKeywordMatch = async (text) => {
-  if (!text) return null;
-  const lower = text.toLowerCase();
+  const lower = (text || '').toLowerCase();
   for (const [deptName, keywords] of Object.entries(DEPARTMENT_KEYWORDS)) {
     if (keywords.some((kw) => lower.includes(kw))) {
       const result = await pool.query(`SELECT id FROM departments WHERE name = $1`, [deptName]);
       if (result.rows[0]) return result.rows[0].id;
     }
   }
-  return null;
+  // ▼▼▼ NEW — no keyword matched: fall back to Study Visas so the lead
+  // never sits stuck. Wrong-department leads can be corrected via the
+  // existing "Assign Enquiry" button. ▼▼▼
+  const fallback = await pool.query(`SELECT id FROM departments WHERE name = $1`, ['Study Visas']);
+  return fallback.rows[0]?.id || null;
+  // ▲▲▲ NEW block ends here ▲▲▲
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 

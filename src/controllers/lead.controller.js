@@ -252,6 +252,35 @@ const getPendingAssignments = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch pending leads' });
   }
 };
+
+// PUT /api/leads/:id/classify — chairman/mis-executive assigns a department
+// to an "Unclassified" pending lead. Immediately tries round-robin.
+const classifyPendingLead = async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (role !== 'chairman' && role !== 'mis-executive') {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    const { department_id } = req.body;
+    if (!department_id) {
+      return res.status(400).json({ success: false, message: 'department_id is required' });
+    }
+
+    const departmentModel = require('../models/department.model');
+    await leadModel.setLeadDepartment(req.params.id, department_id);
+
+    const staffId = await departmentModel.pickNextStaffForDepartment(department_id);
+    if (staffId) {
+      await leadModel.autoAssignLead(req.params.id, staffId, department_id);
+      await leadModel.logAssignmentHistory(req.params.id, staffId, 'auto_round_robin_manual_classify');
+    }
+
+    res.json({ success: true, assigned: !!staffId });
+  } catch (err) {
+    console.error('Classify pending lead error:', err);
+    res.status(500).json({ success: false, message: 'Failed to classify lead' });
+  }
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 
 // GET /api/leads/facebook/webhook — Meta verification handshake
@@ -384,4 +413,5 @@ module.exports = {
   markAssignmentNotified,
   getAllAssignmentsToday,
   getPendingAssignments,
+  classifyPendingLead,
 };

@@ -18,6 +18,7 @@ router.get('/reminders/due',            verifyToken, leadController.getDueRemind
 router.put('/reminders/:noteId/dismiss', verifyToken, leadController.dismissReminder);
 router.get('/assignments/today',        verifyToken, leadController.getAllAssignmentsToday);
 router.get('/pending-assignment',       verifyToken, leadController.getPendingAssignments);
+router.put('/:id/classify',             verifyToken, leadController.classifyPendingLead);
 router.get('/assignments/new',                  verifyToken, leadController.getNewAssignments);
 router.put('/assignments/:historyId/notified',  verifyToken, leadController.markAssignmentNotified);
 router.get('/assignments/today',                verifyToken, leadController.getAllAssignmentsToday);

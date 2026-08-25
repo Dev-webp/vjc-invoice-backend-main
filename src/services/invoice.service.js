@@ -43,7 +43,7 @@ const invoiceService = {
     const approved = await invoiceRepository.approve(token);
 
     // ✅ Customer outstanding update చేయి
-   await pool.query(
+      await pool.query(
   `UPDATE customers SET
     outstanding = outstanding + $2,
     total_payments = total_payments + $1,
@@ -56,6 +56,9 @@ const invoiceService = {
    approved.invoice_date
  ]
 );
+
+    // NEW — generate Agreement PDF once per customer (first approval only)
+    await invoiceService._generateAgreementIfNeeded(approved);
 
     // ── Customer mail కి కావాల్సిన full details fetch చేయి (Bill To section) ──
     // approved.customer_id ఇక్కడ customers.id (numeric FK), display Client ID కాదు
@@ -118,7 +121,7 @@ const invoiceService = {
     }));
   },
 
-  approveInvoiceById: async (id) => {
+    approveInvoiceById: async (id) => {
     const invoice = await invoiceRepository.getById(id);
     if (!invoice) throw new Error('Invoice not found');
     if (invoice.status !== 'Pending') throw new Error('Already processed');
@@ -138,6 +141,10 @@ const invoiceService = {
         approved.invoice_date
       ]
     );
+
+    // NEW — generate Agreement PDF once per customer (first approval only)
+    await invoiceService._generateAgreementIfNeeded(approved);
+
     let customerDetails = {};
     try {
       const custRes = await pool.query(
@@ -242,10 +249,99 @@ const invoiceService = {
       customer_country: customerDetails.country || invoice.customer_country || 'India',
     };
 
-    const html = emailService.buildClientInvoiceHtml(payload);
+        const html = emailService.buildClientInvoiceHtml(payload);
     const pdfBuffer = await pdfService.generatePdfFromHtml(html);
 
     return { pdfBuffer, invoice_number: invoice.invoice_number };
+  },
+
+  // NEW — internal helper: generate + mail Agreement PDF exactly once per customer
+  _generateAgreementIfNeeded: async (approved) => {
+    try {
+      const custRes = await pool.query(
+        `SELECT name, email, phone, address, city, state, service_type, agreement_generated
+         FROM customers WHERE id = $1`,
+        [approved.customer_id]
+      );
+      const cust = custRes.rows[0];
+      if (!cust || cust.agreement_generated) return; // already generated — skip silently
+
+      const agreementService = require('./agreement.service');
+      const pdfService = require('./pdf.service');
+
+      const agreementData = {
+        customer_name: cust.name,
+        customer_email: cust.email,
+        customer_phone: cust.phone,
+        customer_address: cust.address
+          ? `${cust.address}${cust.city ? ', ' + cust.city : ''}${cust.state ? ', ' + cust.state : ''}`
+          : '',
+        service_type: cust.service_type || approved.service_type,
+        total_amount: approved.total_amount,
+        paid_amount: approved.paid_amount,
+        balance_amount: approved.balance_amount,
+        paid_date: approved.invoice_date,
+        agreement_number: approved.invoice_number,
+      };
+
+      const html = agreementService.buildAgreementHtml(agreementData);
+      const pdfBuffer = await pdfService.generatePdfFromHtml(html);
+
+      await emailService.sendAgreementMail(agreementData, pdfBuffer);
+
+      await pool.query(
+        `UPDATE customers SET
+          agreement_generated = true,
+          agreement_total_amount = $1,
+          agreement_number = $2,
+          agreement_generated_at = NOW()
+         WHERE id = $3`,
+        [approved.total_amount, approved.invoice_number, approved.customer_id]
+      );
+    } catch (err) {
+      console.log('⚠️ Agreement generation/mail failed (invoice approval NOT affected):', err.message);
+    }
+  },
+
+  // NEW — Agreement PDF download (uses latest cumulative paid/balance from customers table)
+  getAgreementPdfBuffer: async (invoiceId) => {
+    const pdfService = require('./pdf.service');
+    const agreementService = require('./agreement.service');
+
+    const invoice = await invoiceRepository.getById(invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+
+    const custRes = await pool.query(
+      `SELECT name, email, phone, address, city, state, service_type,
+              agreement_generated, agreement_total_amount, agreement_number,
+              outstanding, last_transaction
+       FROM customers WHERE id = $1`,
+      [invoice.customer_id]
+    );
+    const cust = custRes.rows[0];
+    if (!cust || !cust.agreement_generated) {
+      throw new Error('Agreement not yet generated for this customer');
+    }
+
+    const agreementData = {
+      customer_name: cust.name,
+      customer_email: cust.email,
+      customer_phone: cust.phone,
+      customer_address: cust.address
+        ? `${cust.address}${cust.city ? ', ' + cust.city : ''}${cust.state ? ', ' + cust.state : ''}`
+        : '',
+      service_type: cust.service_type,
+      total_amount: cust.agreement_total_amount,
+      paid_amount: Number(cust.agreement_total_amount || 0) - Number(cust.outstanding || 0),
+      balance_amount: cust.outstanding,
+      paid_date: cust.last_transaction,
+      agreement_number: cust.agreement_number,
+    };
+
+    const html = agreementService.buildAgreementHtml(agreementData);
+    const pdfBuffer = await pdfService.generatePdfFromHtml(html);
+
+    return { pdfBuffer, invoice_number: cust.agreement_number };
   },
 };
 

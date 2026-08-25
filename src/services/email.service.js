@@ -1217,6 +1217,43 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
 
     return html;
   },
+
+  // NEW — Agreement PDF mail (Client + Director; Manager intentionally skipped for now)
+  sendAgreementMail: async (data, pdfBuffer) => {
+    const recipients = [data.customer_email, process.env.DIRECTOR_EMAIL].filter(Boolean);
+    if (recipients.length === 0) {
+      console.log('⚠️ Agreement mail skipped — no recipient email found');
+      return;
+    }
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;padding:20px;color:#333;">
+        <h2 style="color:#0f9d94;">Service Agreement — VJC Overseas</h2>
+        <p>Dear ${data.customer_name || 'Customer'},</p>
+        <p>Please find attached your Service Agreement with VJC Overseas.</p>
+        <table style="font-size:14px;margin-top:10px;">
+          <tr><td style="padding:4px 10px 4px 0;font-weight:700;">Total Amount</td><td>₹${Number(data.total_amount || 0).toLocaleString('en-IN')}</td></tr>
+          <tr><td style="padding:4px 10px 4px 0;font-weight:700;color:#2e7d32;">Paid Amount</td><td style="color:#2e7d32;">₹${Number(data.paid_amount || 0).toLocaleString('en-IN')}</td></tr>
+          <tr><td style="padding:4px 10px 4px 0;font-weight:700;color:#d32f2f;">Balance Amount</td><td style="color:#d32f2f;">₹${Number(data.balance_amount || 0).toLocaleString('en-IN')}</td></tr>
+        </table>
+        <p style="margin-top:20px;color:#666;">Regards,<br/><strong>VJC Overseas</strong></p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"VJC Overseas" <${process.env.EMAIL_USER}>`,
+      to: recipients.join(','),
+      subject: `Service Agreement - ${data.customer_name || ''} (${data.agreement_number || ''})`,
+      html,
+      attachments: [
+        {
+          filename: `Agreement-${data.agreement_number || 'VJC'}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    });
+    console.log('✅ Agreement mail sent to client + director!');
+  },
 };
 
 module.exports = emailService;

@@ -170,7 +170,7 @@ const invoiceController = {
     }
   },
 
-  // ✅ NEW: Chairman mail "View PDF" — token-based, no login, inline preview
+    // ✅ NEW: Chairman mail "View PDF" — token-based, no login, inline preview
   previewPdf: async (req, res) => {
     try {
       const { pdfBuffer, invoice_number } = await invoiceService.getInvoicePdfBufferByToken(req.params.token);
@@ -189,6 +189,21 @@ const invoiceController = {
           </body>
         </html>
       `);
+    }
+  },
+
+  // NEW — Agreement PDF download (frontend dropdown "Agreement PDF" hits this)
+  downloadAgreementPdf: async (req, res) => {
+    try {
+      const { pdfBuffer, invoice_number } = await invoiceService.getAgreementPdfBuffer(req.params.id);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="Agreement-${invoice_number}.pdf"`,
+        'Content-Length': pdfBuffer.length,
+      });
+      res.send(pdfBuffer);
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
     }
   },
 };

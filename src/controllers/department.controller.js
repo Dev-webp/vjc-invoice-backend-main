@@ -70,10 +70,30 @@ const setOnlineStatus = (isOnline) => async (req, res) => {
   }
 };
 
+// GET /api/departments/daily-reset?secret=YOUR_SECRET
+// Called once a day (e.g. 12:05 AM) by an external cron service (cron-job.org),
+// same pattern as /api/cron/sla-check. Resets everyone offline so a stuck
+// is_online flag from a missed/failed checkout never carries into the next day.
+const dailyReset = async (req, res) => {
+  if (process.env.CRON_SECRET && req.query.secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  try {
+    const pool = require('../config/db');
+    const result = await pool.query(`UPDATE department_staff SET is_online = false`);
+    console.log('[DAILY-RESET] Reset is_online for', result.rowCount, 'staff rows');
+    res.json({ success: true, reset_count: result.rowCount });
+  } catch (err) {
+    console.error('[DAILY-RESET] Fatal error:', err);
+    res.status(500).json({ success: false, message: 'Daily reset failed' });
+  }
+};
+
 module.exports = {
   getAll,
   addStaff,
   removeStaff,
   setOnline: setOnlineStatus(true),
   setOffline: setOnlineStatus(false),
+  dailyReset,
 };

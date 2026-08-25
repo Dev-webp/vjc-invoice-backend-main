@@ -42,14 +42,17 @@ const slaCheck = async (req, res) => {
           lead.assigned_to
         );
 
-        if (nextStaffId) {
+                if (nextStaffId) {
           // 3. Auto-shuffle: reassign + reset 30-min timer
           await leadModel.autoAssignLead(lead.id, nextStaffId, lead.department_id);
           await leadModel.logAssignmentHistory(lead.id, nextStaffId, 'auto_shuffle_sla_breach');
           results.reassigned += 1;
         } else {
-          // Nobody else available (everyone absent today / only 1 staff in dept)
+          // Nobody else available (everyone absent/offline today) —
+          // send lead to Pending Assignment instead of leaving it stuck
+          // on an unavailable agent
           await leadModel.markRedFlagTriggered(lead.id);
+          await leadModel.unassignLead(lead.id);
         }
       } catch (innerErr) {
         console.error(`[SLA-CHECK] Error processing lead ${lead.id}:`, innerErr);

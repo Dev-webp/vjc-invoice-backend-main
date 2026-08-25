@@ -50,6 +50,9 @@ const getAllLeads = async ({ role, userId, filters = {} }) => {
   const values = [];
   const conditions = [];
 
+  // NEW — unassigned leads belong in "Pending Assignment" only, never here
+  conditions.push(`l.assigned_to IS NOT NULL`);
+
 if (role !== 'chairman' && role !== 'mis-executive') {
     values.push(userId, userId);
     conditions.push(`(l.created_by = $${values.length - 1} OR l.assigned_to = $${values.length})`);
@@ -360,6 +363,14 @@ const getExpiredSlaLeads = async () => {
 const markRedFlagTriggered = async (leadId) => {
   await pool.query(`UPDATE leads SET red_flag_triggered = true WHERE id = $1`, [leadId]);
 };
+
+// NEW — nobody available to reassign to: send lead to Pending Assignment
+const unassignLead = async (leadId) => {
+  await pool.query(
+    `UPDATE leads SET assigned_to = NULL, updated_at = NOW() WHERE id = $1`,
+    [leadId]
+  );
+};
 // ▲▲▲ NEW block ends here ▲▲▲
 
 // ▼▼▼ NEW — Pending Assignment (chairman-only): leads nobody was online to receive ▼▼▼
@@ -369,7 +380,6 @@ const getPendingAssignmentLeads = async () => {
      FROM leads l
      LEFT JOIN departments d ON d.id = l.department_id
      WHERE l.assigned_to IS NULL
-       AND l.source IN ('Facebook', 'Instagram')
      ORDER BY l.created_at DESC`
   );
   return result.rows;
@@ -399,4 +409,5 @@ module.exports = {
   getPendingAssignmentLeads,
   setLeadDepartment,
   getPendingLeadsForDepartment,
+  unassignLead,
 };

@@ -30,45 +30,82 @@ const getById = async (id) => {
 // ── Create ───────────────────────────────────────────────────
 const create = async (data) => {
   const expenseNo = await generateExpenseNo();
-  const { date, category, customer, amount, billable, notes } = data;
-  const status = billable ? "Billable" : "Non Billable";
+  const {
+  date,
+  category,
+  customer,
+  amount,
+  billable,
+  payment_status,
+  notes
+} = data;
 
-  const result = await pool.query(
-    `INSERT INTO expenses
-      (expense_no, date, category, customer, amount, billable, status, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-     RETURNING *`,
-    [
-      expenseNo, date, category,
-      customer || "-",
-      Number(amount),
+const status = billable ? "Billable" : "Non Billable";
+
+const result = await pool.query(
+  `INSERT INTO expenses
+    (
+      expense_no,
+      date,
+      category,
+      customer,
+      amount,
       billable,
       status,
-      notes || "",
-    ]
-  );
+      payment_status,
+      notes
+    )
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+   RETURNING *`,
+  [
+    expenseNo,
+    date,
+    category,
+    customer || "-",
+    Number(amount),
+    billable,
+    status,
+    payment_status || "Unpaid",
+    notes || "",
+  ]
+);
   return result.rows[0];
 };
 
 // ── Update ───────────────────────────────────────────────────
 const update = async (id, data) => {
-  const { date, category, customer, amount, billable, notes } = data;
+const {
+  date,
+  category,
+  customer,
+  amount,
+  billable,
+  payment_status,
+  notes
+} = data;
 
-  const result = await pool.query(
-    `UPDATE expenses SET
-      date=$1, category=$2, customer=$3,
-      amount=$4, billable=$5, notes=$6,
-      updated_at=CURRENT_TIMESTAMP
-     WHERE id=$7 RETURNING *`,
-    [
-      date, category,
-      customer || "-",
-      Number(amount),
-      billable,
-      notes || "",
-      id,
-    ]
-  );
+const result = await pool.query(
+  `UPDATE expenses SET
+    date=$1,
+    category=$2,
+    customer=$3,
+    amount=$4,
+    billable=$5,
+    payment_status=$6,
+    notes=$7,
+    updated_at=CURRENT_TIMESTAMP
+   WHERE id=$8 RETURNING *`,
+  [
+    date,
+    category,
+    customer || "-",
+    Number(amount),
+    billable,
+    payment_status || "Unpaid",
+    notes || "",
+    id,
+  ]
+);
   return result.rows[0];
 };
 

@@ -11,6 +11,7 @@ const createExpenseTable = async () => {
       amount      NUMERIC(12,2) NOT NULL DEFAULT 0,
       billable    BOOLEAN DEFAULT true,
       status      VARCHAR(50) NOT NULL DEFAULT 'Billable',
+      payment_status VARCHAR(20) NOT NULL DEFAULT 'Unpaid',
       notes       TEXT DEFAULT '',
       created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP

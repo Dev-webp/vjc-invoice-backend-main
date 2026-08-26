@@ -1226,17 +1226,30 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
     }
 
     const html = `
-      <div style="font-family:Arial,sans-serif;padding:20px;color:#333;">
-        <h2 style="color:#0f9d94;">Service Agreement — VJC Overseas</h2>
-        <p>Dear ${data.customer_name || 'Customer'},</p>
-        <p>Please find attached your Service Agreement with VJC Overseas.</p>
-        <table style="font-size:14px;margin-top:10px;">
-          <tr><td style="padding:4px 10px 4px 0;font-weight:700;">Total Amount</td><td>₹${Number(data.total_amount || 0).toLocaleString('en-IN')}</td></tr>
-          <tr><td style="padding:4px 10px 4px 0;font-weight:700;color:#2e7d32;">Paid Amount</td><td style="color:#2e7d32;">₹${Number(data.paid_amount || 0).toLocaleString('en-IN')}</td></tr>
-          <tr><td style="padding:4px 10px 4px 0;font-weight:700;color:#d32f2f;">Balance Amount</td><td style="color:#d32f2f;">₹${Number(data.balance_amount || 0).toLocaleString('en-IN')}</td></tr>
-        </table>
-        <p style="margin-top:20px;color:#666;">Regards,<br/><strong>VJC Overseas</strong></p>
-      </div>
+<style>
+  @media only screen and (max-width: 600px) {
+    .vjc-agreement-table, .vjc-agreement-table tr, .vjc-agreement-table td {
+      display: block !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      text-align: left !important;
+    }
+    .vjc-agreement-wrap { padding: 16px !important; }
+  }
+</style>
+<div style="font-family:Arial,sans-serif;background:#f4f6f9;padding:20px;">
+  <div class="vjc-agreement-wrap" style="max-width:600px;margin:auto;background:#fff;border-radius:8px;border:1px solid #ddd;padding:24px;color:#333;">
+    <h2 style="color:#0f9d94;margin-top:0;">Service Agreement — VJC Overseas</h2>
+    <p>Dear ${data.customer_name || 'Customer'},</p>
+    <p>Please find attached your Service Agreement with VJC Overseas.</p>
+    <table class="vjc-agreement-table" style="width:100%;font-size:14px;margin-top:10px;border-collapse:collapse;">
+      <tr><td style="padding:6px 10px 6px 0;font-weight:700;">Total Amount</td><td style="padding:6px 0;">₹${Number(data.total_amount || 0).toLocaleString('en-IN')}</td></tr>
+      <tr><td style="padding:6px 10px 6px 0;font-weight:700;color:#2e7d32;">Paid Amount</td><td style="padding:6px 0;color:#2e7d32;">₹${Number(data.paid_amount || 0).toLocaleString('en-IN')}</td></tr>
+      <tr><td style="padding:6px 10px 6px 0;font-weight:700;color:#d32f2f;">Balance Amount</td><td style="padding:6px 0;color:#d32f2f;">₹${Number(data.balance_amount || 0).toLocaleString('en-IN')}</td></tr>
+    </table>
+    <p style="margin-top:20px;color:#666;">Regards,<br/><strong>VJC Overseas</strong></p>
+  </div>
+</div>
     `;
 
     await transporter.sendMail({

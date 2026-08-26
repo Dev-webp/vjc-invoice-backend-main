@@ -12,4 +12,6 @@ router.get('/payments-received',        verifyToken, ctrl.paymentsReceived);
 router.get('/ar-aging-summary',         verifyToken, ctrl.arAgingSummary);
 router.get('/customer-balance-summary', verifyToken, ctrl.customerBalanceSummary);
 router.get('/sales-by-salesperson',     verifyToken, ctrl.salesBySalesPerson);
+router.get('/lead-source',              verifyToken, ctrl.leadSourceReport);        // NEW
+router.get('/agent-performance',        verifyToken, ctrl.agentPerformanceReport);  // NEW
 module.exports = router;

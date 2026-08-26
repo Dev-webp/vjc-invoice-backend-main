@@ -24,4 +24,6 @@ module.exports = {
   arAgingSummary:         wrap(reportRepo.arAgingSummary),
   customerBalanceSummary: wrap(reportRepo.customerBalanceSummary),
   salesBySalesPerson:     wrap(reportRepo.salesBySalesPerson),
+  leadSourceReport:       wrap(reportRepo.leadSourceReport),        // NEW
+  agentPerformanceReport: wrap(reportRepo.agentPerformanceReport),  // NEW
 };

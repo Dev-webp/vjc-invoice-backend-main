@@ -208,6 +208,75 @@ const salesBySalesPerson = async ({ role, userId, year, month, day } = {}) => {
   }));
 };
 
+// 9. Lead Source Report — leads received per source
+const leadSourceReport = async ({ role, userId, year, month, day } = {}) => {
+  let dateFilter = '';
+  if (year)  dateFilter += ` AND EXTRACT(YEAR FROM l.created_at) = ${Number(year)}`;
+  if (month) dateFilter += ` AND EXTRACT(MONTH FROM l.created_at) = ${Number(month)}`;
+  if (day)   dateFilter += ` AND EXTRACT(DAY FROM l.created_at) = ${Number(day)}`;
+
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? ` AND (l.created_by = ${Number(userId)} OR l.assigned_to = ${Number(userId)})`
+    : '';
+
+  const result = await pool.query(`
+    SELECT
+      l.source AS source,
+      COUNT(*) AS count,
+      COUNT(*) FILTER (WHERE l.status = 'Closed') AS closed
+    FROM leads l
+    WHERE 1=1
+    ${dateFilter}
+    ${userFilter}
+    GROUP BY l.source
+    ORDER BY count DESC
+  `);
+  return result.rows.map(r => ({
+    source: r.source || 'Unknown',
+    count: Number(r.count),
+    closed: Number(r.closed),
+    conversionRate: Number(r.count) > 0
+      ? `${Math.round((Number(r.closed) / Number(r.count)) * 100)}%`
+      : '0%',
+  }));
+};
+
+// 10. Agent Performance Report — leads closed + red flags per agent
+const agentPerformanceReport = async ({ role, userId, year, month, day } = {}) => {
+  let dateFilter = '';
+  if (year)  dateFilter += ` AND EXTRACT(YEAR FROM l.created_at) = ${Number(year)}`;
+  if (month) dateFilter += ` AND EXTRACT(MONTH FROM l.created_at) = ${Number(month)}`;
+  if (day)   dateFilter += ` AND EXTRACT(DAY FROM l.created_at) = ${Number(day)}`;
+
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? ` AND u.id = ${Number(userId)}`
+    : '';
+
+  const result = await pool.query(`
+    SELECT
+      u.name AS agent,
+      COUNT(l.id) AS total_leads,
+      COUNT(l.id) FILTER (WHERE l.status = 'Closed') AS closed,
+      COALESCE((
+        SELECT COUNT(*) FROM agent_red_flags rf WHERE rf.staff_id = u.id
+      ), 0) AS red_flags
+    FROM users u
+    LEFT JOIN leads l
+      ON l.assigned_to = u.id
+      ${dateFilter}
+    WHERE u.role != 'chairman'
+    ${userFilter}
+    GROUP BY u.id, u.name
+    ORDER BY total_leads DESC
+  `);
+  return result.rows.map(r => ({
+    agent: r.agent,
+    totalLeads: Number(r.total_leads),
+    closed: Number(r.closed),
+    redFlags: Number(r.red_flags),
+  }));
+};
+
 module.exports = {
   salesByCustomer,
   salesByItem,
@@ -217,4 +286,6 @@ module.exports = {
   arAgingSummary,
   customerBalanceSummary,
   salesBySalesPerson,
+  leadSourceReport,
+  agentPerformanceReport,
 };

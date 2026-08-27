@@ -497,8 +497,8 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
 </body>
     `;
 
-    await transporter.sendMail({
-      from: `"VJC Overseas" <${process.env.EMAIL_USER}>`,
+        await transporter.invoice.sendMail({
+      from: `"VJC Overseas" <${process.env.EMAIL_USER_INVOICE}>`,
       to: invoice.customer_email,
       subject: `Invoice ${invoice.invoice_number} - ₹${grandTotalNum.toLocaleString('en-IN')}`,
       html,
@@ -943,8 +943,8 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
 </div>
     `;
 
-   await transporter.sendMail({
-      from: `"VJC Overseas" <${process.env.EMAIL_USER}>`,
+      await transporter.proforma.sendMail({
+      from: `"VJC Overseas" <${process.env.EMAIL_USER_PROFORMA}>`,
       to: quote.customer_email,
       subject: `Quote ${quote.quote_number || quote.quote_id} from VJC Overseas - ₹${totalAmount.toLocaleString('en-IN')}`,
       html,
@@ -1050,8 +1050,8 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
 </div>
     `;
 
-    await transporter.sendMail({
-      from: `"VJC Overseas" <${process.env.EMAIL_USER}>`,
+        await transporter.payment.sendMail({
+      from: `"VJC Overseas" <${process.env.EMAIL_USER_PAYMENT}>`,
       to: payment.email,
       subject: `${stageLabel} — Payment Due ₹${balance.toLocaleString('en-IN')} (${payment.payment_no || ''})`,
       html,
@@ -1252,8 +1252,8 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
 </div>
     `;
 
-    await transporter.sendMail({
-      from: `"VJC Overseas" <${process.env.EMAIL_USER}>`,
+        await transporter.agreement.sendMail({
+      from: `"VJC Overseas" <${process.env.EMAIL_USER_AGREEMENT}>`,
       to: recipients.join(','),
       subject: `Service Agreement - ${data.customer_name || ''} (${data.agreement_number || ''})`,
       html,

@@ -2,6 +2,7 @@ const leadModel = require('../models/lead.model');
 const axios = require('axios');
 
 // POST /api/leads  — Add Enquiry
+// AFTER
 const create = async (req, res) => {
   try {
     const { lead_name, contact_number, source } = req.body;
@@ -20,8 +21,18 @@ const create = async (req, res) => {
 
     let finalLead = lead;
     try {
-      if (lead.service_type) {
-        const departmentModel = require('../models/department.model');
+      const departmentModel = require('../models/department.model');
+
+      // NEW — if a specific staff was chosen at creation time, assign ONLY
+      // to them and SKIP round-robin entirely (walk-in / manual leads).
+      if (req.body.direct_assign_staff_id) {
+        let departmentId = null;
+        if (lead.service_type) {
+          departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
+        }
+        finalLead = await leadModel.autoAssignLead(lead.id, req.body.direct_assign_staff_id, departmentId);
+        await leadModel.logAssignmentHistory(lead.id, req.body.direct_assign_staff_id, 'manual_walkin');
+      } else if (lead.service_type) {
         const departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
         if (departmentId) {
           const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);

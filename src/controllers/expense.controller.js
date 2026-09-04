@@ -58,8 +58,27 @@ const remove = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+// ── NEW: due/overdue unpaid expenses — feeds the top-right bell ─────────
+const getDueNotifications = async (req, res) => {
+  try {
+    res.json(await repo.getDueUnpaidExpenses());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
+// ── NEW: receipt file upload (local disk storage via multer) ────────────
+const uploadReceipt = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const fileUrl = `/uploads/receipts/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 module.exports = {
   getAll, getById, create, update,
   convertToInvoice, reimburse, remove,
+  getDueNotifications, uploadReceipt,
 };

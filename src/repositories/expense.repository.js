@@ -30,7 +30,7 @@ const getById = async (id) => {
 // ── Create ───────────────────────────────────────────────────
 const create = async (data) => {
   const expenseNo = await generateExpenseNo();
-    const {
+  const {
   date,
   category,
   customer,
@@ -47,6 +47,7 @@ const create = async (data) => {
   gst_amount,
   department,
   paid_by,
+  paid_by_name,
   due_date,
 } = data;
 
@@ -73,9 +74,10 @@ const result = await pool.query(
       gst_amount,
       department,
       paid_by,
+      paid_by_name,
       due_date
     )
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
    RETURNING *`,
   [
     expenseNo,
@@ -96,12 +98,12 @@ const result = await pool.query(
     gst_amount ? Number(gst_amount) : 0,
     department || null,
     paid_by || "Company",
+    paid_by_name || "VJC",
     due_date || null,
   ]
 );
   return result.rows[0];
 };
-
 // ── Update ───────────────────────────────────────────────────
 const update = async (id, data) => {
 const {
@@ -121,12 +123,13 @@ const {
   gst_amount,
   department,
   paid_by,
+  paid_by_name,
   due_date,
 } = data;
 
 const result = await pool.query(
   `UPDATE expenses SET
-    date=$1,
+       date=$1,
     category=$2,
     customer=$3,
     amount=$4,
@@ -142,9 +145,10 @@ const result = await pool.query(
     gst_amount=$14,
     department=$15,
     paid_by=$16,
-    due_date=$17,
+    paid_by_name=$17,
+    due_date=$18,
     updated_at=CURRENT_TIMESTAMP
-   WHERE id=$18 RETURNING *`,
+   WHERE id=$19 RETURNING *`,
   [
     date,
     category,
@@ -162,6 +166,7 @@ const result = await pool.query(
     gst_amount ? Number(gst_amount) : 0,
     department || null,
     paid_by || "Company",
+    paid_by_name || "VJC",
     due_date || null,
     id,
   ]

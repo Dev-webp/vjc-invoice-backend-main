@@ -97,10 +97,16 @@ Please review the invoice details below before approving or rejecting it.
       <td style="padding:10px 14px;font-weight:700;color:#444;">Address</td>
       <td style="padding:10px 14px;">${invoice.customer_address}</td>
     </tr>` : ''}
-    <tr style="background:#f8f9fa;">
+       <tr style="background:#f8f9fa;">
       <td style="padding:10px 14px;font-weight:700;color:#444;">Subtotal</td>
       <td style="padding:10px 14px;">₹${Number(invoice.subtotal || 0).toLocaleString('en-IN')}</td>
     </tr>
+       ${Number(invoice.discount || 0) > 0 ? `
+    <tr>
+      <td style="padding:10px 14px;font-weight:700;color:#d32f2f;">Discount (${((Number(invoice.discount || 0) / (Number(invoice.subtotal || 0) + Number(invoice.discount || 0))) * 100).toFixed(0)}%)</td>
+      <td style="padding:10px 14px;color:#d32f2f;">- ₹${Number(invoice.discount || 0).toLocaleString('en-IN')}</td>
+    </tr>` : ''}
+    ${!invoice.is_discount_only ? `
     <tr>
       <td style="padding:10px 14px;font-weight:700;color:#444;">Paid Amount</td>
       <td style="padding:10px 14px;color:#2e7d32;font-weight:700;">₹${Number(invoice.paid_amount || 0).toLocaleString('en-IN')}</td>
@@ -120,7 +126,7 @@ Please review the invoice details below before approving or rejecting it.
     <tr>
       <td style="padding:10px 14px;font-weight:700;color:#444;">Due Date</td>
       <td style="padding:10px 14px;">${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '-'}</td>
-    </tr>
+    </tr>` : ''}
  ${invoice.notes ? `
     <tr style="background:#f8f9fa;">
       <td style="padding:10px 14px;font-weight:700;color:#444;">Description</td>
@@ -204,8 +210,9 @@ Regards,
     await transporter.sendMail({
       from: `"VJC Invoice" <${process.env.EMAIL_USER}>`,
       to: process.env.CHAIRMAN_EMAIL,
-     subject:
-`Invoice Approval Required - ${invoice.invoice_number}`,
+          subject: invoice.is_discount_only
+       ? `Discount Approval From ${invoice.sales_consultant || 'Consultant'} - ${invoice.invoice_number}`
+       : `Invoice Approval Required - ${invoice.invoice_number}`,
       html,
     });
     console.log('✅ Chairman mail sent!');
@@ -390,6 +397,14 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
     INR ${subtotalNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
   </td>
 </tr>
+${Number(invoice.discount || 0) > 0 ? `
+<tr>
+  <td style="padding:4px 0;color:#d32f2f;font-weight:600;">Discount (${((Number(invoice.discount || 0) / (subtotalNum + Number(invoice.discount || 0))) * 100).toFixed(0)}%) :</td>
+  <td style="padding:4px 0;text-align:right;font-weight:700;color:#d32f2f;">
+    - INR ${Number(invoice.discount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+  </td>
+</tr>
+` : ''}
 
 ${!(invoice.pax && invoice.pax.length > 0) ? `
 <tr>
@@ -670,7 +685,7 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
     </div>` : ''}`;
     })()}
 
-    <div style="padding:22px 28px 0 28px;">
+        <div style="padding:22px 28px 0 28px;">
       <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
 <tr>
   <td style="padding:4px 0;color:#333;font-weight:600;">Sub Total :</td>
@@ -678,6 +693,14 @@ ${invoice.customer_gstin ? `<tr><td class="vjc-label" style="font-weight:700;pad
     INR ${subtotalNum.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
   </td>
 </tr>
+${Number(invoice.discount || 0) > 0 ? `
+<tr>
+  <td style="padding:4px 0;color:#d32f2f;font-weight:600;">Discount (${((Number(invoice.discount || 0) / (subtotalNum + Number(invoice.discount || 0))) * 100).toFixed(0)}%) :</td>
+  <td style="padding:4px 0;text-align:right;font-weight:700;color:#d32f2f;">
+    - INR ${Number(invoice.discount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+  </td>
+</tr>
+` : ''}
 
 ${!(invoice.pax && invoice.pax.length > 0) ? `
 <tr>

@@ -42,6 +42,10 @@ const invoiceService = {
 
     const approved = await invoiceRepository.approve(token);
 
+    if (approved.is_discount_only) {
+      return approved; // discount-only approval — no payment yet, skip customer update / client mail
+    }
+
     // ✅ Customer outstanding update చేయి
       await pool.query(
   `UPDATE customers SET
@@ -126,7 +130,11 @@ const invoiceService = {
     if (!invoice) throw new Error('Invoice not found');
     if (invoice.status !== 'Pending') throw new Error('Already processed');
 
-    const approved = await invoiceRepository.approveById(id);
+       const approved = await invoiceRepository.approveById(id);
+
+    if (approved.is_discount_only) {
+      return approved; // discount-only approval — no payment yet, skip customer update / client mail
+    }
 
     await pool.query(
       `UPDATE customers SET

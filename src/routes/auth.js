@@ -270,11 +270,11 @@ if (!user.plain_password) {
 });
   // ── PUT /api/auth/employees/:id ── Update employee ───────
   router.put("/employees/:id", auth, chairmanOnly, async (req, res) => {
-    const {
+        const {
       permissions, status, salary,
       name, email, department, role, location,
       bank_account, ifsc_code, pan_number, date_of_birth, date_of_joining,
-      paid_leaves, new_password,
+      paid_leaves, new_password, employee_id,
     } = req.body;
     const updates = [];
     const vals = [];
@@ -308,9 +308,13 @@ if (!user.plain_password) {
       updates.push(`role = $${idx++}`);
       vals.push(role);
     }
-    if (location !== undefined) {
+       if (location !== undefined) {
       updates.push(`location = $${idx++}`);
       vals.push(location);
+    }
+    if (employee_id !== undefined) {
+      updates.push(`employee_id = $${idx++}`);
+      vals.push(employee_id);
     }
     if (bank_account !== undefined) {
       updates.push(`bank_account = $${idx++}`);

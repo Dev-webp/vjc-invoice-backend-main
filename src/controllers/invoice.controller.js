@@ -93,12 +93,23 @@ const invoiceController = {
     }
   },
 
-  // ✅ NEW: Rejected invoices only — for RejectedInvoices.jsx sidebar page
+   // ✅ NEW: Rejected invoices only — for RejectedInvoices.jsx sidebar page
   getRejected: async (req, res) => {
     try {
-      const result = await pool.query(
-        `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
-      );
+      const role   = req.user?.role;     // NEW
+      const userId = req.user?.id;       // NEW
+
+      let result;
+      if (role === 'chairman') {
+        result = await pool.query(
+          `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
+        );
+      } else {
+        result = await pool.query(
+          `SELECT * FROM invoices WHERE status = 'Rejected' AND created_by = $1 ORDER BY rejected_at DESC`,
+          [userId]
+        );
+      }
       const invoices = result.rows;
 
       // NEW — attach sales consultant name (created_by → users.name)

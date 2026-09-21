@@ -22,7 +22,8 @@ ON c.id::text = i.customer_id
 LEFT JOIN (
   SELECT DISTINCT ON (customer_id)
     id,
-    customer_id
+    customer_id,
+    sent_to_ops
   FROM invoices
   ORDER BY customer_id, id DESC
 ) any_inv
@@ -75,6 +76,7 @@ SELECT
   COALESCE(i.paid_amount, 0)      AS total_payments,
   i.created_at                     AS last_transaction,
    any_inv.id                      AS last_invoice_id,
+   any_inv.sent_to_ops             AS sent_to_ops,
    disc.status                     AS discount_status
 ${baseQuery}
 ORDER BY c.created_at DESC

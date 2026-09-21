@@ -346,10 +346,120 @@ const invoiceService = {
       agreement_number: cust.agreement_number,
     };
 
+       const html = agreementService.buildAgreementHtml(agreementData);
+    const pdfBuffer = await pdfService.generatePdfFromHtml(html);
+
+    return { pdfBuffer, invoice_number: cust.agreement_number };
+  },
+
+  // NEW — Agreement PDF by chairman_token (no login needed). Reuses the same
+  // token already generated for the approve/reject email links, so the Ops
+  // Portal can show/download the agreement PDF without needing invoice-app
+  // credentials.
+  getAgreementPdfBufferByToken: async (token) => {
+    const pdfService = require('./pdf.service');
+    const agreementService = require('./agreement.service');
+
+    const invoice = await invoiceRepository.getByToken(token);
+    if (!invoice) throw new Error('Invalid or expired link');
+
+    const custRes = await pool.query(
+      `SELECT name, email, phone, address, city, state, service_type,
+              agreement_generated, agreement_total_amount, agreement_number,
+              outstanding, last_transaction
+       FROM customers WHERE id = $1`,
+      [invoice.customer_id]
+    );
+    const cust = custRes.rows[0];
+    if (!cust || !cust.agreement_generated) {
+      throw new Error('Agreement not yet generated for this customer');
+    }
+
+    const agreementData = {
+      customer_name: cust.name,
+      customer_email: cust.email,
+      customer_phone: cust.phone,
+      customer_address: cust.address
+        ? `${cust.address}${cust.city ? ', ' + cust.city : ''}${cust.state ? ', ' + cust.state : ''}`
+        : '',
+      service_type: cust.service_type,
+      total_amount: cust.agreement_total_amount,
+      paid_amount: Number(cust.agreement_total_amount || 0) - Number(cust.outstanding || 0),
+      balance_amount: cust.outstanding,
+      paid_date: cust.last_transaction,
+      agreement_number: cust.agreement_number,
+    };
+
     const html = agreementService.buildAgreementHtml(agreementData);
     const pdfBuffer = await pdfService.generatePdfFromHtml(html);
 
     return { pdfBuffer, invoice_number: cust.agreement_number };
+  },
+
+  // NEW — "Send to Ops": pushes an approved invoice's student + payment
+  // details to the Ops Portal so the Counselor can review and confirm it as
+  // a real lead. Does NOT touch anything in the invoice app's own data
+  // model except marking the invoice as sent (sent_to_ops / sent_to_ops_at)
+  // so the button can't be double-clicked into sending twice.
+  sendToOps: async (invoiceId, requestingUserId) => {
+    const axios = require('axios');
+
+    const invoice = await invoiceRepository.getById(invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    if (invoice.status !== 'Approved') {
+      throw new Error('Only an approved invoice can be sent to Ops');
+    }
+    if (invoice.sent_to_ops) {
+      throw new Error('This invoice has already been sent to Ops');
+    }
+
+    const custRes = await pool.query(
+      `SELECT phone, service_type, agreement_generated FROM customers WHERE id = $1`,
+      [invoice.customer_id]
+    );
+    const cust = custRes.rows[0];
+    if (!cust || !cust.agreement_generated) {
+      throw new Error('Agreement not yet generated for this customer — cannot send to Ops yet');
+    }
+
+    // The counselor who created this invoice — Ops Portal matches this
+    // email against its own employees table to decide whose "My Leads" list
+    // this shows up in.
+    let creatorEmail = null;
+    if (requestingUserId) {
+      const userRes = await pool.query(`SELECT email FROM users WHERE id = $1`, [requestingUserId]);
+      creatorEmail = userRes.rows[0]?.email || null;
+    }
+
+    const outstanding = Number(invoice.balance_amount || 0);
+    const paymentStatus = outstanding <= 0 ? 'Paid' : (Number(invoice.paid_amount || 0) > 0 ? 'Partial' : 'Pending');
+
+    const payload = {
+      student_name: invoice.customer_name,
+      phone: cust.phone || '',
+      email: invoice.customer_email,
+      service_type: cust.service_type || invoice.service_type || '',
+      invoice_number: invoice.invoice_number,
+      total_amount: invoice.total_amount,
+      paid_amount: invoice.paid_amount,
+      outstanding_amount: outstanding,
+      payment_status: paymentStatus,
+      agreement_pdf_url: `${process.env.INVOICE_APP_PUBLIC_URL || 'https://invoice.vjcoverseas.com'}/api/invoices/agreement-pdf-by-token/${invoice.chairman_token}`,
+      created_by_email: creatorEmail,
+    };
+
+    await axios.post(
+      `${process.env.OPS_PORTAL_API_URL}/api/leads/from-invoice`,
+      payload,
+      { headers: { 'x-internal-key': process.env.OPS_INTERNAL_API_KEY } }
+    );
+
+    await pool.query(
+      `UPDATE invoices SET sent_to_ops = true, sent_to_ops_at = NOW() WHERE id = $1`,
+      [invoiceId]
+    );
+
+    return { ok: true };
   },
 };
 

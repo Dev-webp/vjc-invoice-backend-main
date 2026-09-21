@@ -203,7 +203,7 @@ const invoiceController = {
     }
   },
 
-  // NEW — Agreement PDF download (frontend dropdown "Agreement PDF" hits this)
+    // NEW — Agreement PDF download (frontend dropdown "Agreement PDF" hits this)
   downloadAgreementPdf: async (req, res) => {
     try {
       const { pdfBuffer, invoice_number } = await invoiceService.getAgreementPdfBuffer(req.params.id);
@@ -213,6 +213,39 @@ const invoiceController = {
         'Content-Length': pdfBuffer.length,
       });
       res.send(pdfBuffer);
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // NEW — Agreement PDF by token, no login required (Ops Portal / counselor
+  // opens this link directly).
+  agreementPdfByToken: async (req, res) => {
+    try {
+      const { pdfBuffer, invoice_number } = await invoiceService.getAgreementPdfBufferByToken(req.params.token);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Agreement-${invoice_number}.pdf"`,
+        'Content-Length': pdfBuffer.length,
+      });
+      res.send(pdfBuffer);
+    } catch (err) {
+      res.status(400).send(`
+        <html>
+          <body style="font-family:Arial; text-align:center; padding:50px;">
+            <h1 style="color:#d32f2f;">❌ Error</h1>
+            <p>${err.message}</p>
+          </body>
+        </html>
+      `);
+    }
+  },
+
+  // NEW — "Send to Ops" button on Customers.jsx
+  sendToOps: async (req, res) => {
+    try {
+      await invoiceService.sendToOps(req.params.id, req.user?.id);
+      res.json({ success: true, message: 'Sent to Ops successfully' });
     } catch (err) {
       res.status(400).json({ success: false, message: err.message });
     }

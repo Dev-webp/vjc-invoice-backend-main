@@ -241,7 +241,7 @@ const invoiceController = {
     }
   },
 
-  // NEW — "Send to Ops" button on Customers.jsx
+    // NEW — "Send to Ops" button on Customers.jsx
   sendToOps: async (req, res) => {
     try {
       await invoiceService.sendToOps(req.params.id, req.user?.id);
@@ -250,5 +250,42 @@ const invoiceController = {
       res.status(400).json({ success: false, message: err.message });
     }
   },
+
+  // ▼▼▼ NEW — paste this whole block here ▼▼▼
+  agreementSignPage: async (req, res) => {
+    try {
+      const pageHtml = await invoiceService.getAgreementSignPageHtml(req.params.token);
+      res.send(pageHtml);
+    } catch (err) {
+      res.status(400).send(`
+        <html>
+          <body style="font-family:Arial; text-align:center; padding:50px;">
+            <h1 style="color:#d32f2f;">❌ Error</h1>
+            <p>${err.message}</p>
+          </body>
+        </html>
+      `);
+    }
+  },
+
+  agreementSignSubmit: async (req, res) => {
+    try {
+      const { signature, signedName } = req.body;
+      await invoiceService.signAgreementByToken(req.params.token, { signature, signedName });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  getAgreementLink: async (req, res) => {
+    try {
+      const data = await invoiceService.getAgreementLinkInfo(req.params.id);
+      res.json({ success: true, ...data });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+  // ▲▲▲ NEW block ends here ▲▲▲
 };
 module.exports = invoiceController;

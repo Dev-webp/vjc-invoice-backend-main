@@ -1,6 +1,6 @@
 const leadModel = require('../models/lead.model');
 const departmentModel = require('../models/department.model');
-
+const { sendAssignmentWhatsapp } = require('../services/whatsapp.service'); // NEW
 // GET /api/cron/sla-check?secret=YOUR_SECRET
 //
 // Called every 1 minute by an external cron service (e.g. cron-job.org).
@@ -44,8 +44,9 @@ const slaCheck = async (req, res) => {
 
                 if (nextStaffId) {
           // 3. Auto-shuffle: reassign + reset 30-min timer
-          await leadModel.autoAssignLead(lead.id, nextStaffId, lead.department_id);
+                   await leadModel.autoAssignLead(lead.id, nextStaffId, lead.department_id);
           await leadModel.logAssignmentHistory(lead.id, nextStaffId, 'auto_shuffle_sla_breach');
+          sendAssignmentWhatsapp(lead.id, nextStaffId, 'auto_shuffle_sla_breach').catch(() => {}); // NEW
           results.reassigned += 1;
         } else {
           // Nobody else available (everyone absent/offline today) —

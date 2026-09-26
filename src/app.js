@@ -10,7 +10,7 @@ const pool = require('./config/db');
 const { createPaymentTable } = require('./models/payment.model');
 const { createRecurringInvoiceTable } = require('./models/recurringInvoice.model');
 const { createExpenseTable } = require('./models/expense.model');
-
+const { ensureAgreementSignColumns } = require('./models/agreementSign.model');
 const app = express();
 
 app.use(cors());
@@ -31,6 +31,7 @@ Promise.all([
   createPaymentTable(),
   createRecurringInvoiceTable(),
   createExpenseTable(),
+  ensureAgreementSignColumns(), // NEW
 ])
   .then(() => console.log('✅ All tables ready'))
   .catch((err) => console.error('❌ Table error:', err));

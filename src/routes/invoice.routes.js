@@ -19,5 +19,8 @@ router.get('/approve/:token', invoiceController.approve);            // no auth 
 router.get('/reject/:token',  invoiceController.reject);             // no auth — email link
 router.get('/preview-pdf/:token', invoiceController.previewPdf);     // NEW — no auth, email link, view before approve
 router.get('/agreement-pdf-by-token/:token', invoiceController.agreementPdfByToken); // NEW — no auth, Ops Portal link
+router.get('/agreement-sign/:token',  invoiceController.agreementSignPage);
+router.post('/agreement-sign/:token', invoiceController.agreementSignSubmit);
+router.get('/:id/agreement-link', verifyToken, invoiceController.getAgreementLink);
 
 module.exports = router;

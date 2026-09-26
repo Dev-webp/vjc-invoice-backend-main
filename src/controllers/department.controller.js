@@ -1,5 +1,6 @@
 const departmentModel = require('../models/department.model');
 const leadModel = require('../models/lead.model');
+const { sendAssignmentWhatsapp } = require('../services/whatsapp.service'); // NEW
 
 // GET /api/departments
 const getAll = async (req, res) => {
@@ -56,8 +57,9 @@ const setOnlineStatus = (isOnline) => async (req, res) => {
         for (const lead of pendingLeads) {
           const staffId = await departmentModel.pickNextStaffForDepartment(row.department_id);
           if (!staffId) break; // nobody online in this department anymore
-          await leadModel.autoAssignLead(lead.id, staffId, row.department_id);
+                    await leadModel.autoAssignLead(lead.id, staffId, row.department_id);
           await leadModel.logAssignmentHistory(lead.id, staffId, 'auto_round_robin_on_login');
+          sendAssignmentWhatsapp(lead.id, staffId, 'auto_round_robin_on_login').catch(() => {}); // NEW
         }
       }
     }

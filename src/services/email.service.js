@@ -1268,8 +1268,16 @@ ${invoice.due_date ? new Date(invoice.due_date).toLocaleDateString("en-GB").repl
     <table class="vjc-agreement-table" style="width:100%;font-size:14px;margin-top:10px;border-collapse:collapse;">
       <tr><td style="padding:6px 10px 6px 0;font-weight:700;">Total Amount</td><td style="padding:6px 0;">₹${Number(data.total_amount || 0).toLocaleString('en-IN')}</td></tr>
       <tr><td style="padding:6px 10px 6px 0;font-weight:700;color:#2e7d32;">Paid Amount</td><td style="padding:6px 0;color:#2e7d32;">₹${Number(data.paid_amount || 0).toLocaleString('en-IN')}</td></tr>
-      <tr><td style="padding:6px 10px 6px 0;font-weight:700;color:#d32f2f;">Balance Amount</td><td style="padding:6px 0;color:#d32f2f;">₹${Number(data.balance_amount || 0).toLocaleString('en-IN')}</td></tr>
+<tr><td style="padding:6px 10px 6px 0;font-weight:700;color:#d32f2f;">Balance Amount</td><td style="padding:6px 0;color:#d32f2f;">₹${Number(data.balance_amount || 0).toLocaleString('en-IN')}</td></tr>
     </table>
+    ${data.sign_link ? `
+    <div style="text-align:center;margin:20px 0 6px;">
+      <a href="${data.sign_link}" style="background:#0f9d94;color:#fff;text-decoration:none;padding:12px 26px;border-radius:6px;display:inline-block;font-weight:bold;">
+        Review &amp; Sign Agreement
+      </a>
+    </div>
+    <p style="color:#888;font-size:12px;text-align:center;">Please review and digitally sign this agreement at your earliest convenience.</p>
+    ` : ''}
     <p style="margin-top:20px;color:#666;">Regards,<br/><strong>VJC Overseas</strong></p>
   </div>
 </div>

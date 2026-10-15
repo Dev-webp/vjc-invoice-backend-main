@@ -4,8 +4,12 @@ const router     = express.Router();
 const bcrypt     = require("bcryptjs");
 const jwt        = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const JWT_SECRET = process.env.JWT_SECRET;
 
-const JWT_SECRET = process.env.JWT_SECRET || "vjc_invoice_secret_2024";
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET must be configured in the environment");
+}
+
 module.exports = (db) => {
 
   // ── Create users table on startup (PostgreSQL syntax) ────
@@ -94,9 +98,8 @@ const { rows } = await db.query(
         return res.status(401).json({ success: false, message: "Invalid credentials" });
 
       console.log("==================================");
-console.log("Email:", email);
-console.log("Password from UI:", password);
-console.log("Password Hash:", user.password_hash);
+
+
 
 const valid = bcrypt.compareSync(password, user.password_hash);
 
@@ -413,9 +416,170 @@ if (!user.plain_password) {
     }
   }
 
+  // ── POST /api/auth/sso ── SSO Token Exchange from HRMS ───────
+  router.post("/sso", async (req, res) => {
+    const { ssoToken } = req.body;
+
+    if (!ssoToken) {
+      return res.status(400).json({ success: false, message: "SSO token required" });
+    }
+
+    try {
+      // Verify the SSO token using the shared secret (must match HRMS_INVOICE_SSO_SECRET from HRMS backend)
+    const SSO_SECRET = process.env.HRMS_INVOICE_SSO_SECRET;
+
+if (!SSO_SECRET) {
+  throw new Error("HRMS_INVOICE_SSO_SECRET must be configured");
+}
+      let decoded;
+      try {
+        decoded = jwt.verify(ssoToken, SSO_SECRET);
+      } catch (err) {
+        console.error("[SSO] Token verification failed:", err.message);
+        return res.status(401).json({ success: false, message: "Invalid SSO token" });
+      }
+
+      // Validate token purpose
+      if (decoded.purpose !== "invoice_sso") {
+        return res.status(401).json({ success: false, message: "Invalid token purpose" });
+      }
+
+      const { email, employee_code, hrms_user_id, role, full_name, department, branch } = decoded;
+
+      if (!email) {
+        return res.status(400).json({ success: false, message: "Email required in SSO token" });
+      }
+
+      // Check if user exists in Invoice database
+      const { rows } = await db.query(
+        "SELECT id, name, email, role, employee_id, location, department, permissions, status FROM users WHERE email = $1",
+        [email]
+      );
+
+      let user;
+      if (rows.length === 0) {
+        // User doesn't exist - create them based on HRMS data
+        const employee_id = employee_code || `VJC-SSO-${hrms_user_id}`;
+        const password_hash = bcrypt.hashSync("sso_user_initial_pass", 10);
+
+        // Map HRMS role to Invoice role
+        const invoiceRole = role === "chairman" ? "chairman" : "employee";
+
+        // Set permissions based on role
+        const permissions = JSON.stringify(
+          invoiceRole === "chairman"
+            ? {
+                customers: true, invoices: true, quotes: true,
+                payments: true, reports: true, expenses: true,
+                services: true, employees: true
+              }
+            : {
+                customers: true, invoices: true, quotes: true,
+                payments: true, reports: true, expenses: true,
+                services: true, employees: false
+              }
+        );
+
+        const insertResult = await db.query(
+          `INSERT INTO users
+             (name, email, password_hash, plain_password, role, department, location, employee_id,
+              salary, paid_leaves, bank_account, ifsc_code, pan_number,
+              date_of_birth, date_of_joining, permissions, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+           RETURNING id, name, email, role, employee_id, location, department, permissions, status`,
+          [
+            full_name || email.split("@")[0] || "SSO User", // Use full_name from HRMS or email prefix
+            email,
+            password_hash,
+            "sso_user_initial_pass",
+            invoiceRole,
+            department || null,
+            branch || "Hyderabad",
+            employee_id,
+            0,
+            12,
+            null,
+            null,
+            null,
+            null,
+            null,
+            permissions,
+            "active"
+          ]
+        );
+        user = insertResult.rows[0];
+        console.log(`[SSO] Created new user: ${email} with role: ${invoiceRole}, employee_id: ${employee_id}`);
+      } else {
+        user = rows[0];
+        // Update user if inactive
+        if (user.status !== "active") {
+          await db.query(
+            "UPDATE users SET status = 'active' WHERE id = $1",
+            [user.id]
+          );
+          user.status = "active";
+        }
+
+        // Sync role from HRMS if provided and different
+        if (role) {
+          const invoiceRole = role === "chairman" ? "chairman" : "employee";
+          if (user.role !== invoiceRole) {
+            await db.query(
+              "UPDATE users SET role = $1 WHERE id = $2",
+              [invoiceRole, user.id]
+            );
+            user.role = invoiceRole;
+            console.log(`[SSO] Updated user role: ${email} -> ${invoiceRole}`);
+          }
+        }
+
+        // Sync name from HRMS if provided
+        if (full_name && user.name !== full_name) {
+          await db.query(
+            "UPDATE users SET name = $1 WHERE id = $2",
+            [full_name, user.id]
+          );
+          user.name = full_name;
+        }
+
+        console.log(`[SSO] Found existing user: ${email}`);
+      }
+
+      // Parse permissions
+      const permissions = (() => {
+        try { return JSON.parse(user.permissions); } catch { return {}; }
+      })();
+
+      // Generate Invoice-specific JWT token
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role, name: user.name, permissions },
+        JWT_SECRET,
+        { expiresIn: "8h" }
+      );
+
+      res.json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          employee_id: user.employee_id,
+          location: user.location,
+          department: user.department,
+          permissions,
+        }
+      });
+    } catch (err) {
+      console.error("SSO exchange error:", err);
+      res.status(500).json({ success: false, message: "SSO exchange failed" });
+    }
+  });
+
   return router;
 };
-const JWT_SECRET_EXPORT = process.env.JWT_SECRET || "vjc_invoice_secret_2024";
+const JWT_SECRET_EXPORT = JWT_SECRET;
 const jwt_export = require("jsonwebtoken");
 const verifyToken = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];

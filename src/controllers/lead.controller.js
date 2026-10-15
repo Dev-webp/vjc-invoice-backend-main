@@ -1,5 +1,6 @@
 const leadModel = require('../models/lead.model');
 const axios = require('axios');
+const { sendAssignmentWhatsapp } = require('../services/whatsapp.service'); // NEW
 
 // POST /api/leads  — Add Enquiry
 // AFTER
@@ -32,6 +33,7 @@ const create = async (req, res) => {
         }
         finalLead = await leadModel.autoAssignLead(lead.id, req.body.direct_assign_staff_id, departmentId);
         await leadModel.logAssignmentHistory(lead.id, req.body.direct_assign_staff_id, 'manual_walkin');
+        sendAssignmentWhatsapp(lead.id, req.body.direct_assign_staff_id, 'manual_walkin').catch(() => {}); // NEW
       } else if (lead.service_type) {
         const departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
         if (departmentId) {
@@ -39,6 +41,7 @@ const create = async (req, res) => {
          if (staffId) {
             finalLead = await leadModel.autoAssignLead(lead.id, staffId, departmentId);
             await leadModel.logAssignmentHistory(lead.id, staffId, 'auto_round_robin');
+            sendAssignmentWhatsapp(lead.id, staffId, 'auto_round_robin').catch(() => {}); // NEW
           } else {
             console.warn(`No available staff (all absent?) for department ${departmentId}`);
           }
@@ -123,6 +126,9 @@ const assign = async (req, res) => {
 
     const assignedBy = req.user.id || req.user.userId || req.user._id;
     const updated = await leadModel.assignLeadsBulk(ids, branch, staff_id, assignedBy);
+
+    // NEW — WhatsApp notify for this manual bulk assign (non-blocking)
+    for (const u of updated) sendAssignmentWhatsapp(u.id, staff_id, 'manual').catch(() => {});
 
     res.json({ success: true, updated });
   } catch (err) {
@@ -280,12 +286,12 @@ const classifyPendingLead = async (req, res) => {
     const departmentModel = require('../models/department.model');
     await leadModel.setLeadDepartment(req.params.id, department_id);
 
-    const staffId = await departmentModel.pickNextStaffForDepartment(department_id);
+        const staffId = await departmentModel.pickNextStaffForDepartment(department_id);
     if (staffId) {
       await leadModel.autoAssignLead(req.params.id, staffId, department_id);
       await leadModel.logAssignmentHistory(req.params.id, staffId, 'auto_round_robin_manual_classify');
+      sendAssignmentWhatsapp(req.params.id, staffId, 'auto_round_robin_manual_classify').catch(() => {}); // NEW
     }
-
     res.json({ success: true, assigned: !!staffId });
   } catch (err) {
     console.error('Classify pending lead error:', err);
@@ -393,9 +399,10 @@ try {
 
     if (departmentId) {
     const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
-    if (staffId) {
+       if (staffId) {
       await leadModel.autoAssignLead(newLead.id, staffId, departmentId);
       await leadModel.logAssignmentHistory(newLead.id, staffId, 'auto_round_robin_fb');
+      sendAssignmentWhatsapp(newLead.id, staffId, 'auto_round_robin_fb').catch(() => {}); // NEW
     } else {
       await leadModel.setLeadDepartment(newLead.id, departmentId);
       console.warn(`No online staff available for department ${departmentId} — lead ${newLead.id} pending assignment`);

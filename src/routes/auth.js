@@ -188,7 +188,7 @@ if (!user.plain_password) {
     try {
       const { rows } = await db.query(
 `SELECT id, name, email, role, employee_id, location, department,
-                salary, status, permissions, plain_password, created_at
+                salary, status, permissions, plain_password, created_at, office_number
          FROM users
          WHERE role != 'chairman'
          ORDER BY created_at DESC`
@@ -250,8 +250,17 @@ if (!user.plain_password) {
         ]
       );
 
-      // Send credentials email (non-blocking)
+            // Send credentials email (non-blocking)
       sendCredentialsEmail(name, email, password, employee_id, role, location);
+
+      // NEW — office number is optional, saved separately so the existing
+      // INSERT statement above stays 100% untouched
+      if (req.body.office_number) {
+        await db.query(
+          `UPDATE users SET office_number = $1 WHERE employee_id = $2`,
+          [req.body.office_number, employee_id]
+        );
+      }
 
       res.json({
         success: true,
@@ -273,11 +282,11 @@ if (!user.plain_password) {
 });
   // ── PUT /api/auth/employees/:id ── Update employee ───────
   router.put("/employees/:id", auth, chairmanOnly, async (req, res) => {
-    const {
+        const {
       permissions, status, salary,
       name, email, department, role, location,
       bank_account, ifsc_code, pan_number, date_of_birth, date_of_joining,
-      paid_leaves, new_password,
+      paid_leaves, new_password, employee_id,
     } = req.body;
     const updates = [];
     const vals = [];
@@ -311,9 +320,13 @@ if (!user.plain_password) {
       updates.push(`role = $${idx++}`);
       vals.push(role);
     }
-    if (location !== undefined) {
+       if (location !== undefined) {
       updates.push(`location = $${idx++}`);
       vals.push(location);
+    }
+    if (employee_id !== undefined) {
+      updates.push(`employee_id = $${idx++}`);
+      vals.push(employee_id);
     }
     if (bank_account !== undefined) {
       updates.push(`bank_account = $${idx++}`);
@@ -339,12 +352,16 @@ if (!user.plain_password) {
       updates.push(`paid_leaves = $${idx++}`);
       vals.push(paid_leaves);
     }
-    if (new_password) {
+       if (new_password) {
       const hash = bcrypt.hashSync(new_password, 10);
       updates.push(`password_hash = $${idx++}`);
       vals.push(hash);
       updates.push(`plain_password = $${idx++}`);
       vals.push(new_password);
+    }
+    if (req.body.office_number !== undefined) {   // NEW
+      updates.push(`office_number = $${idx++}`);
+      vals.push(req.body.office_number);
     }
 
     if (updates.length === 0)

@@ -10,7 +10,7 @@ const app = require("./app");         // ← FIRST app require
 const db = require("./config/db");
 
 app.use("/api/items", require("./routes/item.routes"));   
-
+app.use('/uploads', express.static('uploads'));
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {

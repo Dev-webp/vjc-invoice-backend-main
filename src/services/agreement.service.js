@@ -19,8 +19,10 @@ const agreementService = {
       total_amount,
       paid_amount,
       balance_amount,
-      paid_date,
+paid_date,
       agreement_number,
+      signature,    // NEW
+      signed_at,    // NEW
     } = data;
 
     const fmt = (n) => Number(n || 0).toLocaleString('en-IN');
@@ -157,8 +159,15 @@ const agreementService = {
   <table style="width:100%;margin-top:20px;">
     <tr>
       <td style="width:50%;"><strong>First Party</strong><br/>VJC Overseas<br/><br/>1.<br/>2.</td>
-      <td style="width:50%;"><strong>Second Party</strong><br/>${customer_name || '-'}<br/><br/>1.<br/>2.</td>
-    </tr>
+<td style="width:50%;">
+  <strong>Second Party</strong><br/>${customer_name || '-'}<br/><br/>
+  ${signature
+    ? (String(signature).startsWith('data:image')
+        ? `<img src="${signature}" style="height:50px;margin-top:4px;" /><br/>`
+        : `<span style="font-family:'Brush Script MT',cursive;font-size:22px;">${signature}</span><br/>`)
+    : '1.<br/>2.'}
+  ${signed_at ? `<span style="font-size:11px;color:#555;">Digitally signed on ${new Date(signed_at).toLocaleString('en-GB')}</span>` : ''}
+</td>    </tr>
   </table>
 
 </div>

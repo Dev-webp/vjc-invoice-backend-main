@@ -22,11 +22,21 @@ ON c.id::text = i.customer_id
 LEFT JOIN (
   SELECT DISTINCT ON (customer_id)
     id,
-    customer_id
+    customer_id,
+    sent_to_ops
   FROM invoices
   ORDER BY customer_id, id DESC
 ) any_inv
 ON c.id::text = any_inv.customer_id
+LEFT JOIN (
+  SELECT DISTINCT ON (customer_id)
+    customer_id,
+    status
+  FROM invoices
+  WHERE is_discount_only = true
+  ORDER BY customer_id, id DESC
+) disc
+ON c.id::text = disc.customer_id
 WHERE 1=1
 `;
     const values = [];
@@ -58,14 +68,16 @@ WHERE 1=1
     const total = parseInt(countResult.rows[0].count, 10);
 
     // ── Paginated data ──
-    const dataQuery = `
+        const dataQuery = `
 SELECT
   c.*,
   COALESCE(i.status, 'Pending')   AS invoice_status,
   COALESCE(i.balance_amount, 0)   AS outstanding,
   COALESCE(i.paid_amount, 0)      AS total_payments,
   i.created_at                     AS last_transaction,
-   any_inv.id                      AS last_invoice_id
+   any_inv.id                      AS last_invoice_id,
+   any_inv.sent_to_ops             AS sent_to_ops,
+   disc.status                     AS discount_status
 ${baseQuery}
 ORDER BY c.created_at DESC
 LIMIT $${i} OFFSET $${i + 1}

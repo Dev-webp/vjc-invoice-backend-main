@@ -67,9 +67,10 @@ const {
       service_type,
       state_by,
       notes,
-      chairman_token,
+            chairman_token,
       screenshot_base64,
-       original_invoice_id 
+       original_invoice_id,
+      is_discount_only
     } = data;
     console.log("INSERT DEBUG:", {
   invoice_number,
@@ -84,11 +85,11 @@ const {
    items, invoice_type, currency, invoice_date, payment_mode, reference_no,
 subtotal, tax_percent, tax_type, tax_amount, total_amount, discount,
    grand_total, paid_amount, balance_amount,
-   due_date, service_type, state_by, notes, chairman_token, status, created_by, screenshot_base64,  original_invoice_id, pax)
+     due_date, service_type, state_by, notes, chairman_token, status, created_by, screenshot_base64,  original_invoice_id, pax, is_discount_only)
       VALUES (
 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
 $11,$12,$13,$14,$15,$16,$17,$18,
-$19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28
+$19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28,$29
 )
        RETURNING *`,
      [
@@ -100,7 +101,8 @@ $19,$20,$21,$22,$23,$24,'Pending',$25,$26,$27,$28
   data.created_by || null,
   screenshot_base64 || null,
   original_invoice_id || null,
-  JSON.stringify(pax || [])   // ✅ NEW
+  JSON.stringify(pax || []),   // ✅ NEW
+  is_discount_only || false
 ]
     );
     return result.rows[0];

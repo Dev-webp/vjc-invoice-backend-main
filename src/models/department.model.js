@@ -55,6 +55,12 @@ await pool.query(`
   await pool.query(`
     ALTER TABLE lead_notes ADD COLUMN IF NOT EXISTS dismissed BOOLEAN DEFAULT false
   `);
+
+  // ▼▼▼ NEW — office number for WhatsApp assignment notifications ▼▼▼
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS office_number VARCHAR(20)
+  `);
+  // ▲▲▲ NEW block ends here ▲▲▲
   // ▲▲▲ NEW block ends here ▲▲▲
 
   // Seed the 5 BRD departments if they don't exist yet.

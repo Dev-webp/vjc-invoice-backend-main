@@ -93,12 +93,23 @@ const invoiceController = {
     }
   },
 
-  // ✅ NEW: Rejected invoices only — for RejectedInvoices.jsx sidebar page
+   // ✅ NEW: Rejected invoices only — for RejectedInvoices.jsx sidebar page
   getRejected: async (req, res) => {
     try {
-      const result = await pool.query(
-        `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
-      );
+      const role   = req.user?.role;     // NEW
+      const userId = req.user?.id;       // NEW
+
+      let result;
+      if (role === 'chairman') {
+        result = await pool.query(
+          `SELECT * FROM invoices WHERE status = 'Rejected' ORDER BY rejected_at DESC`
+        );
+      } else {
+        result = await pool.query(
+          `SELECT * FROM invoices WHERE status = 'Rejected' AND created_by = $1 ORDER BY rejected_at DESC`,
+          [userId]
+        );
+      }
       const invoices = result.rows;
 
       // NEW — attach sales consultant name (created_by → users.name)
@@ -192,7 +203,7 @@ const invoiceController = {
     }
   },
 
-  // NEW — Agreement PDF download (frontend dropdown "Agreement PDF" hits this)
+    // NEW — Agreement PDF download (frontend dropdown "Agreement PDF" hits this)
   downloadAgreementPdf: async (req, res) => {
     try {
       const { pdfBuffer, invoice_number } = await invoiceService.getAgreementPdfBuffer(req.params.id);
@@ -206,5 +217,75 @@ const invoiceController = {
       res.status(400).json({ success: false, message: err.message });
     }
   },
+
+  // NEW — Agreement PDF by token, no login required (Ops Portal / counselor
+  // opens this link directly).
+  agreementPdfByToken: async (req, res) => {
+    try {
+      const { pdfBuffer, invoice_number } = await invoiceService.getAgreementPdfBufferByToken(req.params.token);
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Agreement-${invoice_number}.pdf"`,
+        'Content-Length': pdfBuffer.length,
+      });
+      res.send(pdfBuffer);
+    } catch (err) {
+      res.status(400).send(`
+        <html>
+          <body style="font-family:Arial; text-align:center; padding:50px;">
+            <h1 style="color:#d32f2f;">❌ Error</h1>
+            <p>${err.message}</p>
+          </body>
+        </html>
+      `);
+    }
+  },
+
+    // NEW — "Send to Ops" button on Customers.jsx
+  sendToOps: async (req, res) => {
+    try {
+      await invoiceService.sendToOps(req.params.id, req.user?.id);
+      res.json({ success: true, message: 'Sent to Ops successfully' });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  // ▼▼▼ NEW — paste this whole block here ▼▼▼
+  agreementSignPage: async (req, res) => {
+    try {
+      const pageHtml = await invoiceService.getAgreementSignPageHtml(req.params.token);
+      res.send(pageHtml);
+    } catch (err) {
+      res.status(400).send(`
+        <html>
+          <body style="font-family:Arial; text-align:center; padding:50px;">
+            <h1 style="color:#d32f2f;">❌ Error</h1>
+            <p>${err.message}</p>
+          </body>
+        </html>
+      `);
+    }
+  },
+
+  agreementSignSubmit: async (req, res) => {
+    try {
+      const { signature, signedName } = req.body;
+      await invoiceService.signAgreementByToken(req.params.token, { signature, signedName });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+
+  getAgreementLink: async (req, res) => {
+    try {
+      const data = await invoiceService.getAgreementLinkInfo(req.params.id);
+      res.json({ success: true, ...data });
+    } catch (err) {
+      res.status(400).json({ success: false, message: err.message });
+    }
+  },
+  // ▲▲▲ NEW block ends here ▲▲▲
 };
 module.exports = invoiceController;

@@ -13,9 +13,14 @@ router.get('/',    verifyToken, invoiceController.getAll);           // ← ADD
 router.get('/:id/download-pdf', verifyToken, invoiceController.downloadPdf);
 router.get('/:id/download-agreement-pdf', verifyToken, invoiceController.downloadAgreementPdf);   // NEW
 router.get('/:id/view-pdf', verifyToken, invoiceController.viewPdfById);   // NEW
+router.post('/:id/send-to-ops', verifyToken, invoiceController.sendToOps);   // NEW
 router.post('/',   verifyToken, invoiceController.create);           // ← ADD
 router.get('/approve/:token', invoiceController.approve);            // no auth — email link
 router.get('/reject/:token',  invoiceController.reject);             // no auth — email link
 router.get('/preview-pdf/:token', invoiceController.previewPdf);     // NEW — no auth, email link, view before approve
+router.get('/agreement-pdf-by-token/:token', invoiceController.agreementPdfByToken); // NEW — no auth, Ops Portal link
+router.get('/agreement-sign/:token',  invoiceController.agreementSignPage);
+router.post('/agreement-sign/:token', invoiceController.agreementSignSubmit);
+router.get('/:id/agreement-link', verifyToken, invoiceController.getAgreementLink);
 
 module.exports = router;

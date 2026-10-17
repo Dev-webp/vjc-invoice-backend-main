@@ -175,11 +175,9 @@ const getDepartmentIdByKeywordMatch = async (text) => {
       if (result.rows[0]) return result.rows[0].id;
     }
   }
-  // ▼▼▼ NEW — no keyword matched: fall back to Study Visas so the lead
-  // never sits stuck. Wrong-department leads can be corrected via the
-  // existing "Assign Enquiry" button. ▼▼▼
-  const fallback = await pool.query(`SELECT id FROM departments WHERE name = $1`, ['Study Visas']);
-  return fallback.rows[0]?.id || null;
+    // CHANGED: no keyword matched -> return null. The lead goes to the
+  // Pending Assignment tab and is assigned manually (no Study Visas fallback).
+  return null;
   // ▲▲▲ NEW block ends here ▲▲▲
 };
 // ▲▲▲ NEW block ends here ▲▲▲

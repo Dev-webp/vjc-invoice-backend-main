@@ -394,8 +394,7 @@ try {
     console.error('Fetch form name error (non-fatal):', formErr.message);
   }
 
-  const matchText = `${formName} ${extraFieldsSummary || ''}`;
-  const departmentId = await departmentModel.getDepartmentIdByKeywordMatch(matchText);
+  const matchText = formName || ''; // CHANGED: department decided from form name only  const departmentId = await departmentModel.getDepartmentIdByKeywordMatch(matchText);
 
     if (departmentId) {
     const staffId = await departmentModel.pickNextStaffForDepartment(departmentId);

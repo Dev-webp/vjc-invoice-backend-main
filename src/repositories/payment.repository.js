@@ -139,35 +139,164 @@ const sendReminder = async (id, newStage, method, note) => {
 
 // ── Record Payment ────────────────────────────────────────────
 const recordPayment = async (id, data) => {
-  const { paymentDate, paymentMethod, amountReceived, reference, notes } = data;
+  const {
+    paymentDate,
+    paymentMethod,
+    amountReceived,
+    reference,
+    notes
+  } = data;
 
+  // Get the existing payment + linked invoice reference
   const cur = await pool.query(
-    "SELECT amount_due, invoice_id FROM payments WHERE id=$1", [id]
+    `SELECT amount_due, amount_received, invoice_id
+     FROM payments
+     WHERE id = $1`,
+    [id]
   );
-  const amountDue = Number(cur.rows[0]?.amount_due || 0);
-  const invoiceId = cur.rows[0]?.invoice_id;
-  const received  = Number(amountReceived);
-  const newStatus = received >= amountDue ? "Paid"
-                  : received > 0          ? "Partially Paid"
-                  : "Initial Request";
 
+  if (cur.rows.length === 0) {
+    throw new Error('Payment record not found');
+  }
+
+  const paymentRow = cur.rows[0];
+
+  const invoiceRef = paymentRow.invoice_id;
+  const received = Number(amountReceived || 0);
+
+  // Keep the payment record cumulative.
+  // Example:
+  // First payment 30,000
+  // Second payment 20,000
+  // Stored amount_received becomes 50,000.
+  const previousReceived = Number(paymentRow.amount_received || 0);
+  const cumulativeReceived = previousReceived + received;
+
+  // ------------------------------------------------------------
+  // Find the actual invoice.
+  // invoice_id in the existing payment flow may contain either
+  // the invoice DB id or the invoice number, so support both.
+  // ------------------------------------------------------------
+  let invoice = null;
+
+  if (invoiceRef !== null && invoiceRef !== undefined && invoiceRef !== '') {
+    const invoiceResult = await pool.query(
+      `SELECT *
+       FROM invoices
+       WHERE id::text = $1
+          OR invoice_number = $1
+       LIMIT 1`,
+      [String(invoiceRef)]
+    );
+
+    invoice = invoiceResult.rows[0] || null;
+  }
+
+  // Fallback to the payment amount if no invoice was found.
+  const amountDue = Number(
+    invoice?.grand_total ||
+    invoice?.total_amount ||
+    paymentRow.amount_due ||
+    0
+  );
+
+  const newPaidAmount = Math.min(cumulativeReceived, amountDue);
+  const newBalanceAmount = Math.max(amountDue - newPaidAmount, 0);
+
+  const newStatus =
+    newBalanceAmount <= 0
+      ? "Paid"
+      : newPaidAmount > 0
+        ? "Partially Paid"
+        : "Initial Request";
+
+  // ------------------------------------------------------------
+  // Update payment record
+  // ------------------------------------------------------------
   const result = await pool.query(
     `UPDATE payments
-     SET amount_received=$1, payment_method=$2, txn_ref=$3,
-         paid_date=$4, notes=COALESCE(NULLIF($5,''), notes),
-         status=$6, updated_at=CURRENT_TIMESTAMP
-     WHERE id=$7 RETURNING *`,
-    [received, paymentMethod, reference || "",
-     paymentDate || null, notes || "", newStatus, id]
+     SET amount_received = $1,
+         payment_method = $2,
+         txn_ref = $3,
+         paid_date = $4,
+         notes = COALESCE(NULLIF($5,''), notes),
+         status = $6,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $7
+     RETURNING *`,
+    [
+      cumulativeReceived,
+      paymentMethod,
+      reference || "",
+      paymentDate || null,
+      notes || "",
+      newStatus,
+      id
+    ]
   );
 
-  // 🔗 keep the linked invoice in sync when fully paid
-  if (newStatus === "Paid" && invoiceId) {
-    const invoiceRepo = require('./invoice.repository');
+  // ------------------------------------------------------------
+  // Update Invoice
+  // ------------------------------------------------------------
+  let updatedInvoice = invoice;
+
+  if (invoice) {
+    const invoiceUpdate = await pool.query(
+      `UPDATE invoices
+       SET paid_amount = $1,
+           balance_amount = $2
+       WHERE id = $3
+       RETURNING *`,
+      [
+        newPaidAmount,
+        newBalanceAmount,
+        invoice.id
+      ]
+    );
+
+    updatedInvoice = invoiceUpdate.rows[0] || invoice;
+  }
+
+  // ------------------------------------------------------------
+  // Sync the SAME invoice lead to OPS
+  // Only if this invoice was already sent to Ops.
+  // ------------------------------------------------------------
+  if (updatedInvoice?.sent_to_ops && updatedInvoice?.invoice_number) {
     try {
-      await invoiceRepo.markPaidByInvoiceNumber(invoiceId);
+      const axios = require('axios');
+
+      const paymentStatus =
+        newBalanceAmount <= 0
+          ? 'Paid'
+          : newPaidAmount > 0
+            ? 'Partial'
+            : 'Pending';
+
+      await axios.patch(
+        `${process.env.OPS_PORTAL_API_URL}/api/leads/from-invoice/payment-sync`,
+        {
+          invoice_number: updatedInvoice.invoice_number,
+          total_amount: Number(updatedInvoice.total_amount || amountDue),
+          paid_amount: newPaidAmount,
+          outstanding_amount: newBalanceAmount,
+          payment_status: paymentStatus,
+        },
+        {
+          headers: {
+            'x-internal-key': process.env.OPS_INTERNAL_API_KEY
+          }
+        }
+      );
+
+      console.log(
+        `✅ OPS payment sync successful for ${updatedInvoice.invoice_number}`
+      );
     } catch (err) {
-      console.error('Invoice sync error:', err.message);
+      // Do not break the Invoice payment operation if OPS is temporarily unavailable.
+      console.error(
+        `⚠️ OPS payment sync failed for ${updatedInvoice.invoice_number}:`,
+        err.message
+      );
     }
   }
 

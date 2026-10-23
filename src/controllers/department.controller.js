@@ -91,6 +91,41 @@ const dailyReset = async (req, res) => {
   }
 };
 
+// ▼▼▼ NEW — Client Meeting Mode ▼▼▼
+// GET /api/departments/meeting-mode — the logged-in staff member's own status
+const getMyMeetingMode = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const status = await departmentModel.getMeetingStatus(staffId);
+    res.json({ success: true, ...status });
+  } catch (err) {
+    console.error('Get meeting mode error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch meeting mode' });
+  }
+};
+
+// PUT /api/departments/meeting-mode  { in_meeting: true | false }
+// ON  -> round-robin skips this person.   OFF -> they are back in the rotation.
+const setMyMeetingMode = async (req, res) => {
+  try {
+    const staffId = req.user.id || req.user.userId || req.user._id;
+    const { in_meeting } = req.body;
+    if (typeof in_meeting !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'in_meeting (true/false) is required' });
+    }
+    const status = await departmentModel.getMeetingStatus(staffId);
+    if (!status.is_staff) {
+      return res.status(403).json({ success: false, message: 'Only department staff can use Client Meeting Mode' });
+    }
+    await departmentModel.setMeetingMode(staffId, in_meeting);
+    res.json({ success: true, in_meeting });
+  } catch (err) {
+    console.error('Set meeting mode error:', err);
+    res.status(500).json({ success: false, message: 'Failed to update meeting mode' });
+  }
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   getAll,
   addStaff,
@@ -98,4 +133,6 @@ module.exports = {
   setOnline: setOnlineStatus(true),
   setOffline: setOnlineStatus(false),
   dailyReset,
+  getMyMeetingMode,
+  setMyMeetingMode,
 };

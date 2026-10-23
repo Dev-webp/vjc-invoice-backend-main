@@ -112,6 +112,60 @@ const removeStaffFromDepartment = async (departmentId, staffId) => {
   );
 };
 
+// ▼▼▼ NEW — Client Meeting Mode (ON = skipped in round-robin, OFF = back in) ▼▼▼
+// Kept in its own small table so no existing table is touched.
+// The table is created on first use. If that ever fails, round-robin keeps
+// working exactly as before (it just won't skip anyone).
+let meetingTablePromise = null;
+const ensureMeetingTable = () => {
+  if (!meetingTablePromise) {
+    meetingTablePromise = pool
+      .query(`
+        CREATE TABLE IF NOT EXISTS staff_meeting_mode (
+          staff_id INTEGER PRIMARY KEY,
+          in_meeting BOOLEAN NOT NULL DEFAULT false,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `)
+      .then(() => true)
+      .catch((err) => {
+        console.error('Meeting-mode table error (round-robin continues without it):', err);
+        meetingTablePromise = null; // try again on the next call
+        return false;
+      });
+  }
+  return meetingTablePromise;
+};
+
+// Turn Client Meeting Mode ON / OFF for one staff member.
+const setMeetingMode = async (staffId, inMeeting) => {
+  await ensureMeetingTable();
+  await pool.query(
+    `INSERT INTO staff_meeting_mode (staff_id, in_meeting, updated_at)
+     VALUES ($1, $2, NOW())
+     ON CONFLICT (staff_id)
+     DO UPDATE SET in_meeting = EXCLUDED.in_meeting, updated_at = NOW()`,
+    [staffId, inMeeting]
+  );
+};
+
+// Is this person part of any department round-robin, and are they in a meeting?
+// A meeting flag only counts for the day it was set (auto-clears next day).
+const getMeetingStatus = async (staffId) => {
+  await ensureMeetingTable();
+  const staffRow = await pool.query(
+    `SELECT 1 FROM department_staff WHERE staff_id = $1 LIMIT 1`,
+    [staffId]
+  );
+  const meetingRow = await pool.query(
+    `SELECT 1 FROM staff_meeting_mode
+     WHERE staff_id = $1 AND in_meeting = true AND updated_at >= CURRENT_DATE`,
+    [staffId]
+  );
+  return { is_staff: staffRow.rowCount > 0, in_meeting: meetingRow.rowCount > 0 };
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 // Round-robin: picks the staff member in this department who was
 // assigned longest ago (or never), then stamps their last_assigned_at.
 const pickNextStaffForDepartment = async (departmentId, excludeStaffId = null) => {
@@ -122,11 +176,22 @@ const pickNextStaffForDepartment = async (departmentId, excludeStaffId = null) =
     excludeClause = `AND ds.staff_id != $${params.length}`;
   }
 
+  // NEW — skip staff who switched ON Client Meeting Mode (today).
+  // If the meeting table isn't ready, this stays empty = old behaviour.
+  const meetingReady = await ensureMeetingTable();
+  const meetingClause = meetingReady
+    ? `AND ds.staff_id NOT IN (
+         SELECT staff_id FROM staff_meeting_mode
+         WHERE in_meeting = true AND updated_at >= CURRENT_DATE
+       )`
+    : '';
+
   const result = await pool.query(
     `SELECT ds.staff_id FROM department_staff ds
      WHERE ds.department_id = $1
-       AND ds.is_online = true
+              AND ds.is_online = true
        ${excludeClause}
+       ${meetingClause}
        AND ds.staff_id NOT IN (
          SELECT staff_id FROM agent_red_flags
          WHERE flag_date = CURRENT_DATE
@@ -223,6 +288,8 @@ module.exports = {
   getDepartmentIdByServiceType,
   addRedFlag,
   getRedFlagCountToday,
-  setStaffOnlineByEmail,
+    setStaffOnlineByEmail,
   getDepartmentIdByKeywordMatch,
+  setMeetingMode,
+  getMeetingStatus,
 };

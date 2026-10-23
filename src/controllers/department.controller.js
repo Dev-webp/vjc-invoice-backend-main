@@ -113,10 +113,6 @@ const setMyMeetingMode = async (req, res) => {
     if (typeof in_meeting !== 'boolean') {
       return res.status(400).json({ success: false, message: 'in_meeting (true/false) is required' });
     }
-    const status = await departmentModel.getMeetingStatus(staffId);
-    if (!status.is_staff) {
-      return res.status(403).json({ success: false, message: 'Only department staff can use Client Meeting Mode' });
-    }
     await departmentModel.setMeetingMode(staffId, in_meeting);
     res.json({ success: true, in_meeting });
   } catch (err) {

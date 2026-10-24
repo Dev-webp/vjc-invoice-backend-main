@@ -2,11 +2,13 @@ const express = require('express');
 const router = express.Router();
 const leadController = require('../controllers/lead.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
+const teamMonitorController = require('../controllers/teamMonitor.controller'); // NEW
 
 router.get('/facebook/webhook',  leadController.verifyWebhook);
 router.post('/facebook/webhook', leadController.receiveWebhookLead);
 
 router.get('/',              verifyToken, leadController.getAll);
+router.get('/team-monitor',  verifyToken, teamMonitorController.getTeamMonitor); // NEW (must stay above '/:id')
 router.get('/:id',           verifyToken, leadController.getById);
 router.post('/',             verifyToken, leadController.create);
 router.post('/assign',       verifyToken, leadController.assign);

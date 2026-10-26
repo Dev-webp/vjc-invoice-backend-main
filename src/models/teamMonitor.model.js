@@ -30,7 +30,8 @@ const getTeamMonitor = async (rangeKey, staffId = null) => {
       COUNT(*) FILTER (WHERE l.assigned_to IS NOT NULL AND EXISTS (
         SELECT 1 FROM lead_notes n
         WHERE n.lead_id = l.id AND n.commented_by = l.assigned_to
-          AND (l.assigned_at IS NULL OR n.created_at > l.assigned_at)
+          AND (l.assigned_at IS NULL OR (n.created_at > l.assigned_at
+               AND n.created_at <= l.assigned_at + INTERVAL '30 minutes'))
       ))::int AS contacted,
       COUNT(*) FILTER (WHERE l.status IN ('Warm','Prospect'))::int AS warm_prospect,
       COUNT(*) FILTER (WHERE l.status = 'Pending Agreement')::int AS pending_agreement,
@@ -55,12 +56,17 @@ const getTeamMonitor = async (rangeKey, staffId = null) => {
     pool.query(`SELECT COUNT(DISTINCT staff_id)::int AS total,
                        COUNT(DISTINCT staff_id) FILTER (WHERE is_online = true)::int AS online
                 FROM department_staff`),
-    pool.query(`SELECT ds.staff_id AS id, u.name, MIN(d.name) AS department,
-                       BOOL_OR(ds.is_online) AS is_online
-                FROM department_staff ds
-                JOIN users u ON u.id = ds.staff_id
+    pool.query(`SELECT u.id, u.name, MIN(d.name) AS department,
+                       COALESCE(BOOL_OR(ds.is_online), false) AS is_online
+                FROM users u
+                LEFT JOIN department_staff ds ON ds.staff_id = u.id
                 LEFT JOIN departments d ON d.id = ds.department_id
-                GROUP BY ds.staff_id, u.name
+                WHERE ds.staff_id IS NOT NULL
+                   OR u.id IN (SELECT assigned_to FROM leads
+                               WHERE assigned_to IS NOT NULL AND created_at::date >= CURRENT_DATE - 30)
+                   OR u.id IN (SELECT staff_id FROM agent_red_flags
+                               WHERE flag_date >= CURRENT_DATE - 30)
+                GROUP BY u.id, u.name
                 ORDER BY u.name`),
     pool.query(`SELECT l.assigned_to AS id, COUNT(*)::int AS leads,
                        ROUND(AVG(EXTRACT(EPOCH FROM (fn.first_note - l.assigned_at)) / 60))::int AS avg_reply_min

@@ -185,4 +185,32 @@ const getTeamMonitor = async (rangeKey, staffId = null) => {
   };
 };
 
-module.exports = { getTeamMonitor };
+// Get today's red flags for a specific agent
+const getAgentRedFlags = async (agentId) => {
+  const result = await pool.query(
+    `SELECT
+       f.id,
+       f.staff_id,
+       f.lead_id,
+       f.flag_date,
+       f.created_at,
+       l.lead_name,
+       u.name AS agent_name,
+       nu.name AS now_with
+     FROM agent_red_flags f
+     JOIN users u ON u.id = f.staff_id
+     LEFT JOIN leads l ON l.id = f.lead_id
+     LEFT JOIN users nu ON nu.id = l.assigned_to
+     WHERE f.staff_id::text = $1::text
+       AND f.flag_date::date = CURRENT_DATE
+     ORDER BY f.created_at DESC`,
+    [String(agentId)]
+  );
+
+  return result.rows;
+};
+
+module.exports = {
+  getTeamMonitor,
+  getAgentRedFlags
+};

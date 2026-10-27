@@ -21,4 +21,39 @@ const getTeamMonitor = async (req, res) => {
   }
 };
 
-module.exports = { getTeamMonitor };
+// GET /api/leads/team-monitor/:agentId/red-flags
+const getAgentRedFlags = async (req, res) => {
+  try {
+    const { role, id, userId, _id } = req.user;
+    const isAdmin = role === 'chairman' || role === 'mis-executive';
+
+    const loggedInUserId = id || userId || _id;
+    const { agentId } = req.params;
+
+    // Employees can view only their own red flags.
+    if (!isAdmin && String(loggedInUserId) !== String(agentId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized'
+      });
+    }
+
+    const redFlags = await teamMonitorModel.getAgentRedFlags(agentId);
+
+    return res.json({
+      success: true,
+      redFlags
+    });
+  } catch (err) {
+    console.error('Agent red flags error:', err);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load today's red flags"
+    });
+  }
+};
+
+module.exports = {
+  getTeamMonitor,
+  getAgentRedFlags
+};

@@ -8,7 +8,12 @@ router.get('/facebook/webhook',  leadController.verifyWebhook);
 router.post('/facebook/webhook', leadController.receiveWebhookLead);
 
 router.get('/',              verifyToken, leadController.getAll);
-if (teamMonitorController) router.get('/team-monitor', verifyToken, teamMonitorController.getTeamMonitor); // NEW (must stay above '/:id')router.get('/:id',           verifyToken, leadController.getById);
+if (teamMonitorController) {
+  router.get('/team-monitor', verifyToken, teamMonitorController.getTeamMonitor);
+  router.get('/team-monitor/:agentId/red-flags', verifyToken, teamMonitorController.getAgentRedFlags);
+}
+
+router.get('/:id', verifyToken, leadController.getById);
 router.post('/',             verifyToken, leadController.create);
 router.post('/assign',       verifyToken, leadController.assign);
 router.put('/:id/status',    verifyToken, leadController.updateStatus);

@@ -392,6 +392,57 @@ if (!user.plain_password) {
     }
   });
 
+  // ── POST /api/auth/sync-user ───────────────────────────────
+  // Called by HRMS backend to sync employee permissions to Invoice/CRM system
+  router.post("/sync-user", async (req, res) => {
+    const syncSecret = req.headers["x-sync-secret"];
+    if (syncSecret !== process.env.HRMS_INVOICE_SSO_SECRET) {
+      return res.status(403).json({ success: false, message: "Invalid sync secret" });
+    }
+
+    const { name, email, department, location, employee_id, permissions } = req.body;
+
+    if (!email || !employee_id) {
+      return res.status(400).json({ success: false, message: "Email and employee_id required" });
+    }
+
+    try {
+      // Check if user exists by email
+      const existingUser = await db.query(
+        "SELECT id FROM users WHERE email = $1",
+        [email]
+      );
+
+      const permsJson = JSON.stringify(permissions || {});
+
+      if (existingUser.rows.length > 0) {
+        // Update existing user
+        await db.query(
+          `UPDATE users
+           SET name = $1, department = $2, location = $3, employee_id = $4, permissions = $5
+           WHERE email = $6`,
+          [name, department, location, employee_id, permsJson, email]
+        );
+        res.json({ success: true, message: "User updated" });
+      } else {
+        // Create new user
+        const password = Math.random().toString(36).slice(-8);
+        const password_hash = bcrypt.hashSync(password, 10);
+
+        await db.query(
+          `INSERT INTO users
+           (name, email, password_hash, plain_password, department, location, employee_id, permissions)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [name, email, password_hash, password, department, location, employee_id, permsJson]
+        );
+        res.json({ success: true, message: "User created", password });
+      }
+    } catch (err) {
+      console.error("Sync user error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
   // ── Email helper ─────────────────────────────────────────
   function sendCredentialsEmail(name, email, password, employee_id, role, location) {
     try {

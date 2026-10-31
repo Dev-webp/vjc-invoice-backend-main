@@ -81,7 +81,15 @@ const getAll = async (req, res) => {
 // GET /api/leads/:id
 const getById = async (req, res) => {
   try {
-    const lead = await leadModel.getLeadById(req.params.id);
+    // Validate that id is a strict positive safe integer
+    const idParam = req.params.id;
+    const leadId = Number(idParam);
+
+    if (!/^\d+$/.test(idParam) || !Number.isSafeInteger(leadId) || leadId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID: must be a positive integer' });
+    }
+
+    const lead = await leadModel.getLeadById(leadId);
     if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
 
     // Employee can only view their own / assigned lead

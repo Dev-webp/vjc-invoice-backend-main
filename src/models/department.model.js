@@ -264,9 +264,27 @@ const getMeetingSummary = async (range, dateStr, staffIdOrNull) => {
      LEFT JOIN users u ON u.id = m.staff_id
      GROUP BY m.staff_id, u.name
      ORDER BY total_sec DESC`,
+       params
+  );
+
+  // NEW — each individual meeting (start, end, duration) per agent
+  const list = await pool.query(
+    `SELECT m.staff_id, m.started_at, m.ended_at, m.dur, m.running
+     FROM (${base}) m
+     ORDER BY m.started_at`,
     params
   );
-  return { agents: result.rows };
+  const byStaff = {};
+  list.rows.forEach((r) => {
+    (byStaff[r.staff_id] = byStaff[r.staff_id] || []).push({
+      started_at: r.started_at,
+      ended_at: r.ended_at,
+      duration_sec: r.dur,
+      running: r.running,
+    });
+  });
+
+  return { agents: result.rows.map((a) => ({ ...a, list: byStaff[a.staff_id] || [] })) };
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 

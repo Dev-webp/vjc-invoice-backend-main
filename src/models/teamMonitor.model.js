@@ -54,9 +54,9 @@ const getTeamMonitor = async (rangeKey, staffId = null, selectedDate = null) => 
     ? [previousDate, previousDate, sid]
     : [pFrom, pTo, sid];
 
-  const inRange = (col) =>
+    const inRange = (col) =>
     validSelectedDate
-      ? `${col}::date = $1::date`
+      ? `${col}::date BETWEEN $1::date AND $2::date`
       : `${col}::date BETWEEN CURRENT_DATE - $1::int AND CURRENT_DATE - $2::int`;
 
   const scope = (col) => `($3::text IS NULL OR ${col}::text = $3::text)`;

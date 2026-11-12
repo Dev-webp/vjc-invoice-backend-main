@@ -3,6 +3,18 @@ const pool = require('../config/db');
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+// NEW — completion reason columns, created automatically (safe to run many times)
+let columnsReady = null;
+const ensureColumns = () => {
+  if (!columnsReady) {
+    columnsReady = pool
+      .query(`ALTER TABLE lead_notes
+                ADD COLUMN IF NOT EXISTS completion_remark TEXT,
+                ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`)
+      .catch((e) => { columnsReady = null; throw e; });
+  }
+  return columnsReady;
+};
 const getLead = async (leadId) => {
   const r = await pool.query(
     `SELECT id, lead_name, email, contact_number, interested_countries, status, assigned_to, created_by
@@ -13,8 +25,10 @@ const getLead = async (leadId) => {
 };
 
 const listFollowups = async (leadId) => {
+  await ensureColumns();   // NEW
   const r = await pool.query(
     `SELECT n.id, n.remark, n.created_at, n.commented_by,
+            n.completion_remark, n.completed_at,
             COALESCE(n.dismissed, false) AS done,
             to_char(n.reminder_date, 'YYYY-MM-DD') AS reminder_date,
             to_char(n.reminder_time, 'HH24:MI') AS reminder_time,
@@ -45,13 +59,16 @@ const addFollowup = async (leadId, { followup_date, followup_time, remarks }, us
 };
 
 // author or admin can mark a followup done
-const markDone = async (noteId, userId, isAdmin) => {
+const markDone = async (noteId, userId, isAdmin, completionRemark) => {
+  if (!completionRemark || !String(completionRemark).trim()) throw Object.assign(new Error('Completion remarks are required'), { status: 400 });   // NEW
+  await ensureColumns();   // NEW
   const r = await pool.query(
-    `UPDATE lead_notes SET dismissed = true
+    `UPDATE lead_notes SET dismissed = true,
+            completion_remark = $4, completed_at = NOW()
      WHERE id = $1 AND add_to_reminder = true
        AND ($2::boolean OR commented_by::text = $3::text)
      RETURNING id`,
-    [noteId, !!isAdmin, String(userId)]
+    [noteId, !!isAdmin, String(userId), String(completionRemark).trim()]
   );
   return r.rows[0] || null;
 };

@@ -45,8 +45,7 @@ const addFollowup = async (req, res) => {
 const markDone = async (req, res) => {
   try {
     const u = who(req);
-    const row = await model.markDone(req.params.noteId, u.id, u.isAdmin);
-    if (!row) return res.status(403).json({ success: false, message: 'Not authorized or not found' });
+    const row = await model.markDone(req.params.noteId, u.id, u.isAdmin, (req.body || {}).remark);    if (!row) return res.status(403).json({ success: false, message: 'Not authorized or not found' });
     res.json({ success: true });
   } catch (err) { fail(res, err, 'Mark followup done error:'); }
 };

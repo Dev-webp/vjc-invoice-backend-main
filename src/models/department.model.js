@@ -233,8 +233,11 @@ const getMeetingSummary = async (range, dateStr, staffIdOrNull) => {
   } else if (range === 'yesterday') {
     fromExpr = 'CURRENT_DATE - 1';
     toExpr = 'CURRENT_DATE';
-  } else if (range === '7d') {
+   } else if (range === '7d') {
     fromExpr = 'CURRENT_DATE - 6';
+    toExpr = 'CURRENT_DATE + 1';
+  } else if (range === 'all') {
+    fromExpr = "DATE '2000-01-01'";
     toExpr = 'CURRENT_DATE + 1';
   }
 

@@ -14,6 +14,7 @@ if (teamMonitorController) {
   router.get('/team-monitor/:agentId/red-flags', verifyToken, teamMonitorController.getAgentRedFlags);
 }
 
+<<<<<<< HEAD
 if (followupController) { // NEW (must stay above '/:id')
   router.get('/calendar', verifyToken, followupController.getCalendar);
   router.get('/:id/followups', verifyToken, followupController.getFollowups);
@@ -21,18 +22,21 @@ if (followupController) { // NEW (must stay above '/:id')
   router.put('/followups/:noteId/done', verifyToken, followupController.markDone);
 }
 router.get('/:id', verifyToken, leadController.getById);
+=======
+router.get('/',              verifyToken, leadController.getAll);
+router.get('/pending-assignment',       verifyToken, leadController.getPendingAssignments);
+router.get('/assignments/today',        verifyToken, leadController.getAllAssignmentsToday);
+router.get('/assignments/new',                  verifyToken, leadController.getNewAssignments);
+router.get('/reminders/due',            verifyToken, leadController.getDueReminders);
+>>>>>>> 0bf9aead950789b2247497597680c7ebc651e1f2
 router.post('/',             verifyToken, leadController.create);
 router.post('/assign',       verifyToken, leadController.assign);
+router.get('/:id', verifyToken, leadController.getById);
 router.put('/:id/status',    verifyToken, leadController.updateStatus);
+router.put('/:id/classify',             verifyToken, leadController.classifyPendingLead);
 router.get('/:id/notes',            verifyToken, leadController.getNotes);
 router.post('/:id/notes',           verifyToken, leadController.addNote);
 router.get('/:id/profile-history',  verifyToken, leadController.getProfileHistory);
-router.get('/reminders/due',            verifyToken, leadController.getDueReminders);
 router.put('/reminders/:noteId/dismiss', verifyToken, leadController.dismissReminder);
-router.get('/assignments/today',        verifyToken, leadController.getAllAssignmentsToday);
-router.get('/pending-assignment',       verifyToken, leadController.getPendingAssignments);
-router.put('/:id/classify',             verifyToken, leadController.classifyPendingLead);
-router.get('/assignments/new',                  verifyToken, leadController.getNewAssignments);
 router.put('/assignments/:historyId/notified',  verifyToken, leadController.markAssignmentNotified);
-router.get('/assignments/today',                verifyToken, leadController.getAllAssignmentsToday);
 module.exports = router;

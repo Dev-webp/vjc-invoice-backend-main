@@ -1,24 +1,39 @@
 const pool = require('../config/db');
 
+// Helper: Date range filter
+const getDateFilter = (dateRange) => {
+  const filters = {
+    today: `AND DATE(invoice_date) = CURRENT_DATE`,
+    thisWeek: `AND invoice_date >= DATE_TRUNC('week', CURRENT_DATE)`,
+    thisMonth: `AND invoice_date >= DATE_TRUNC('month', CURRENT_DATE)`,
+    lastMonth: `AND invoice_date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month') AND invoice_date < DATE_TRUNC('month', CURRENT_DATE)`,
+    thisQuarter: `AND invoice_date >= DATE_TRUNC('quarter', CURRENT_DATE)`,
+    thisYear: `AND invoice_date >= DATE_TRUNC('year', CURRENT_DATE)`,
+    custom: ''
+  };
+  return filters[dateRange] || filters.thisMonth;
+};
+
 // 1. Sales by Customer
-const salesByCustomer = async ({ role, userId } = {}) => {
- const whereClause = '';
+const salesByCustomer = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND i.created_by = ${userId}`
+    : '';
 
   const result = await pool.query(`
   SELECT
-    u.name AS person,
-    u.email AS email,
+    c.name AS customer,
     COUNT(i.id) AS invoices,
     COALESCE(SUM(i.total_amount), 0) AS amount,
     COALESCE(SUM(i.paid_amount), 0) AS paid,
-    COALESCE(SUM(i.balance_amount), 0) AS pending
-  FROM users u
-  LEFT JOIN invoices i
-    ON i.created_by = u.id
+    COALESCE(SUM(i.balance_amount), 0) AS outstanding
+  FROM customers c
+  LEFT JOIN invoices i ON c.id::text = i.customer_id
+  WHERE 1=1
     ${dateFilter}
-  WHERE u.role != 'chairman'
-  ${userFilter}
-  GROUP BY u.id, u.name, u.email
+    ${userFilter}
+  GROUP BY c.id, c.name
   ORDER BY amount DESC
 `);
 
@@ -27,25 +42,28 @@ const salesByCustomer = async ({ role, userId } = {}) => {
     invoices: Number(r.invoices),
     amount: Number(r.amount),
     paid: Number(r.paid),
-    outstanding: Number(r.amount) - Number(r.paid),
+    outstanding: Number(r.outstanding),
   }));
 };
 
-// 2. Sales by Item (unnest line_items jsonb)
-const salesByItem = async ({ role, userId } = {}) => {
-  const whereClause = (role !== 'chairman' && role !== 'mis-executive' && userId)
-    ? `WHERE created_by = '${userId}'`
+// 2. Sales by Item
+const salesByItem = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND i.created_by = ${userId}`
     : '';
 
   const result = await pool.query(`
     SELECT
-      COALESCE(NULLIF(TRIM(service_type), ''), 'Other') AS item,
+      COALESCE(NULLIF(TRIM(i.service_type), ''), 'Other') AS item,
       COUNT(*) AS qty,
-      COALESCE(SUM(total_amount), 0) AS amount,
-      COALESCE(SUM(paid_amount), 0) AS paid,
-      COALESCE(SUM(balance_amount), 0) AS pending
-    FROM invoices
-    ${whereClause}
+      COALESCE(SUM(i.total_amount), 0) AS amount,
+      COALESCE(SUM(i.paid_amount), 0) AS paid,
+      COALESCE(SUM(i.balance_amount), 0) AS pending
+    FROM invoices i
+    WHERE 1=1
+      ${dateFilter}
+      ${userFilter}
     GROUP BY item
     ORDER BY amount DESC
   `);
@@ -63,9 +81,10 @@ const salesByItem = async ({ role, userId } = {}) => {
 };
 
 // 3. Invoice Details
-const invoiceDetails = async ({ role, userId } = {}) => {
-  const whereClause = (role !== 'chairman' && role !== 'mis-executive' && userId)
-    ? `WHERE created_by = '${userId}'`
+const invoiceDetails = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND created_by = ${userId}`
     : '';
 
   const result = await pool.query(`
@@ -79,7 +98,9 @@ const invoiceDetails = async ({ role, userId } = {}) => {
       balance_amount,
       status
     FROM invoices
-    ${whereClause}
+    WHERE 1=1
+      ${dateFilter}
+      ${userFilter}
     ORDER BY created_at DESC
   `);
 
@@ -94,30 +115,46 @@ const invoiceDetails = async ({ role, userId } = {}) => {
     status: r.status || '',
   }));
 };
+
 // 4. Quote Details
-const quoteDetails = async () => {
+const quoteDetails = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND created_by = ${userId}`
+    : '';
+
   const result = await pool.query(`
     SELECT quote_id, customer_name, quote_date, expiry_date, total_amount, status
     FROM quotes
+    WHERE 1=1
+      ${dateFilter}
+      ${userFilter}
     ORDER BY quote_date DESC
   `);
   return result.rows.map(r => ({
     quoteNo: r.quote_id,
     customer: r.customer_name,
-    date: r.quote_date ? r.quote_date.toISOString().slice(0, 10) : '',
-    expiryDate: r.expiry_date ? r.expiry_date.toISOString().slice(0, 10) : '',
+    date: r.quote_date ? (r.quote_date instanceof Date ? r.quote_date.toISOString().slice(0, 10) : String(r.quote_date).slice(0, 10)) : '',
+    expiryDate: r.expiry_date ? (r.expiry_date instanceof Date ? r.expiry_date.toISOString().slice(0, 10) : String(r.expiry_date).slice(0, 10)) : '',
     amount: Number(r.total_amount),
     status: r.status,
   }));
 };
 
 // 5. Payments Received
-const paymentsReceived = async () => {
+const paymentsReceived = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND p.created_by = ${userId}`
+    : '';
+
   const result = await pool.query(`
     SELECT p.paid_date, c.name AS customer_name, p.invoice_id, p.payment_method, p.amount_received
     FROM payments p
     LEFT JOIN customers c ON c.customer_id = p.customer_id
     WHERE p.amount_received IS NOT NULL AND p.amount_received > 0
+      ${dateFilter}
+      ${userFilter}
     ORDER BY p.paid_date DESC
   `);
   return result.rows.map(r => ({
@@ -130,18 +167,26 @@ const paymentsReceived = async () => {
 };
 
 // 6. AR Aging Summary
-const arAgingSummary = async () => {
+const arAgingSummary = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND i.created_by = ${userId}`
+    : '';
+
   const result = await pool.query(`
     SELECT
-      customer_name AS customer,
-      COALESCE(SUM(CASE WHEN due_date >= CURRENT_DATE THEN total_amount ELSE 0 END), 0) AS current,
-      COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE AND (CURRENT_DATE - due_date) <= 30 THEN total_amount ELSE 0 END), 0) AS days30,
-      COALESCE(SUM(CASE WHEN (CURRENT_DATE - due_date) > 30 AND (CURRENT_DATE - due_date) <= 60 THEN total_amount ELSE 0 END), 0) AS days60,
-      COALESCE(SUM(CASE WHEN (CURRENT_DATE - due_date) > 60 THEN total_amount ELSE 0 END), 0) AS days90,
-      COALESCE(SUM(total_amount), 0) AS total
-    FROM sales_invoices
-    WHERE status NOT IN ('Paid','Cancelled','Draft')
-    GROUP BY customer_name
+      c.name AS customer,
+      COALESCE(SUM(CASE WHEN i.due_date >= CURRENT_DATE THEN i.balance_amount ELSE 0 END), 0) AS current,
+      COALESCE(SUM(CASE WHEN i.due_date < CURRENT_DATE AND (CURRENT_DATE - i.due_date) <= 30 THEN i.balance_amount ELSE 0 END), 0) AS days30,
+      COALESCE(SUM(CASE WHEN (CURRENT_DATE - i.due_date) > 30 AND (CURRENT_DATE - i.due_date) <= 60 THEN i.balance_amount ELSE 0 END), 0) AS days60,
+      COALESCE(SUM(CASE WHEN (CURRENT_DATE - i.due_date) > 60 THEN i.balance_amount ELSE 0 END), 0) AS days90,
+      COALESCE(SUM(i.balance_amount), 0) AS total
+    FROM invoices i
+    LEFT JOIN customers c ON c.id::text = i.customer_id
+    WHERE i.status NOT IN ('Paid','Cancelled','Draft')
+      ${dateFilter}
+      ${userFilter}
+    GROUP BY c.id, c.name
     ORDER BY total DESC
   `);
   return result.rows.map(r => ({
@@ -155,10 +200,24 @@ const arAgingSummary = async () => {
 };
 
 // 7. Customer Balance Summary
-const customerBalanceSummary = async () => {
+const customerBalanceSummary = async ({ role, userId, dateRange } = {}) => {
+  const dateFilter = getDateFilter(dateRange);
+  const userFilter = (role !== 'chairman' && role !== 'mis-executive' && userId)
+    ? `AND i.created_by = ${userId}`
+    : '';
+
   const result = await pool.query(`
-    SELECT customer_id, name, outstanding, total_payments
-    FROM customers
+    SELECT
+      c.customer_id,
+      c.name,
+      COALESCE(SUM(i.balance_amount), 0) AS outstanding,
+      COALESCE(SUM(i.paid_amount), 0) AS total_payments
+    FROM customers c
+    LEFT JOIN invoices i ON c.id::text = i.customer_id
+    WHERE 1=1
+      ${dateFilter}
+      ${userFilter}
+    GROUP BY c.id, c.customer_id, c.name
     ORDER BY outstanding DESC
   `);
   return result.rows.map(r => ({

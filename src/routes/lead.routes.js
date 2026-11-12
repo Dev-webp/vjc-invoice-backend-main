@@ -5,7 +5,7 @@ const { verifyToken } = require('../middlewares/auth.middleware');
 let followupController = null; // NEW
 try { followupController = require('../controllers/followup.controller'); } catch (e) { console.error('Followups disabled:', e.message); } // NEW
 let teamMonitorController = null; // NEW
-// try { teamMonitorController = require('../controllers/teamMonitor.controller'); } catch (e) { console.error('Team monitor disabled:', e.message); } // NEW
+try { teamMonitorController = require('../controllers/teamMonitor.controller'); } catch (e) { console.error('Team monitor disabled:', e.message); } // NEW
 router.get('/facebook/webhook',  leadController.verifyWebhook);
 router.post('/facebook/webhook', leadController.receiveWebhookLead);
 

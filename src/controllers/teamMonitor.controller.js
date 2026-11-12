@@ -1,5 +1,6 @@
 const teamMonitorModel = require('../models/teamMonitor.model');
-
+let departmentModel = null;   // NEW — safe load, Team Monitor never breaks because of this
+try { departmentModel = require('../models/department.model'); } catch (e) { console.error('Meeting summary disabled:', e.message); }
 // GET /api/leads/team-monitor?range=today|yesterday|7d
 // chairman / mis-executive -> sees everything
 // any other logged-in employee -> sees only their own leads, flags and workload
@@ -13,11 +14,27 @@ const getTeamMonitor = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-const data = await teamMonitorModel.getTeamMonitor(
-  req.query.range,
-  isAdmin ? null : userId,
-  req.query.date
-);    res.json({ success: true, ...data });
+    const data = await teamMonitorModel.getTeamMonitor(
+      req.query.range,
+      isAdmin ? null : userId,
+      req.query.date
+    );
+
+    // NEW — meeting summary; if it fails, the rest of Team Monitor still loads
+    let meetings = { agents: [] };
+    try {
+      if (departmentModel) {
+        meetings = await departmentModel.getMeetingSummary(
+          req.query.range,
+          req.query.date,
+          isAdmin ? null : userId
+        );
+      }
+    } catch (e) {
+      console.error('Meeting summary error:', e.message);
+    }
+
+    res.json({ success: true, ...data, meetings });
   } catch (err) {
     console.error('Team monitor error:', err);
     res.status(500).json({ success: false, message: 'Failed to load team monitor' });

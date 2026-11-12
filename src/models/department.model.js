@@ -147,6 +147,38 @@ const setMeetingMode = async (staffId, inMeeting) => {
      DO UPDATE SET in_meeting = EXCLUDED.in_meeting, updated_at = NOW()`,
     [staffId, inMeeting]
   );
+
+  // NEW — meeting history log. If this fails, meeting mode still works as before.
+  try {
+    await ensureMeetingLog();
+    if (inMeeting) {
+      // close forgotten meetings from earlier days (capped at midnight)
+      await pool.query(
+        `UPDATE staff_meeting_log
+         SET ended_at = date_trunc('day', started_at) + interval '1 day',
+             duration_sec = EXTRACT(EPOCH FROM (date_trunc('day', started_at) + interval '1 day' - started_at))::int
+         WHERE staff_id = $1 AND ended_at IS NULL AND started_at < CURRENT_DATE`,
+        [staffId]
+      );
+      const open = await pool.query(
+        `SELECT id FROM staff_meeting_log WHERE staff_id = $1 AND ended_at IS NULL LIMIT 1`,
+        [staffId]
+      );
+      if (open.rowCount === 0) {
+        await pool.query(`INSERT INTO staff_meeting_log (staff_id) VALUES ($1)`, [staffId]);
+      }
+    } else {
+      await pool.query(
+        `UPDATE staff_meeting_log
+         SET ended_at = NOW(),
+             duration_sec = EXTRACT(EPOCH FROM (NOW() - started_at))::int
+         WHERE staff_id = $1 AND ended_at IS NULL`,
+        [staffId]
+      );
+    }
+  } catch (err) {
+    console.error('Meeting log error (meeting mode still works):', err.message);
+  }
 };
 
 // Is this person part of any department round-robin, and are they in a meeting?
@@ -163,6 +195,78 @@ const getMeetingStatus = async (staffId) => {
     [staffId]
   );
   return { is_staff: staffRow.rowCount > 0, in_meeting: meetingRow.rowCount > 0, elapsed_seconds: meetingRow.rows[0] ? meetingRow.rows[0].elapsed : 0 };
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
+// ▼▼▼ NEW — meeting history log (one row per meeting) ▼▼▼
+let meetingLogPromise = null;
+const ensureMeetingLog = () => {
+  if (!meetingLogPromise) {
+    meetingLogPromise = pool
+      .query(`
+        CREATE TABLE IF NOT EXISTS staff_meeting_log (
+          id SERIAL PRIMARY KEY,
+          staff_id INTEGER NOT NULL,
+          started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          ended_at TIMESTAMP,
+          duration_sec INTEGER
+        )
+      `)
+      .then(() => true)
+      .catch((err) => { meetingLogPromise = null; throw err; });
+  }
+  return meetingLogPromise;
+};
+
+// Per-agent meeting summary for Lead Monitor.
+// range: today | yesterday | 7d, or dateStr 'YYYY-MM-DD'. staffIdOrNull = only that person.
+const getMeetingSummary = async (range, dateStr, staffIdOrNull) => {
+  await ensureMeetingLog();
+
+  const params = [];
+  let fromExpr = 'CURRENT_DATE';
+  let toExpr = 'CURRENT_DATE + 1';
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    params.push(dateStr);
+    fromExpr = '$1::date';
+    toExpr = '($1::date + 1)';
+  } else if (range === 'yesterday') {
+    fromExpr = 'CURRENT_DATE - 1';
+    toExpr = 'CURRENT_DATE';
+  } else if (range === '7d') {
+    fromExpr = 'CURRENT_DATE - 6';
+    toExpr = 'CURRENT_DATE + 1';
+  }
+
+  let staffClause = '';
+  if (staffIdOrNull) {
+    params.push(staffIdOrNull);
+    staffClause = `AND l.staff_id = $${params.length}`;
+  }
+
+  const base = `
+    SELECT l.staff_id, l.started_at, l.ended_at,
+           COALESCE(l.duration_sec,
+             EXTRACT(EPOCH FROM (LEAST(NOW(), date_trunc('day', l.started_at) + interval '1 day') - l.started_at))::int) AS dur,
+           (l.ended_at IS NULL AND l.started_at >= CURRENT_DATE) AS running
+    FROM staff_meeting_log l
+    WHERE l.started_at >= ${fromExpr} AND l.started_at < ${toExpr}
+    ${staffClause}`;
+
+  const result = await pool.query(
+    `SELECT m.staff_id, u.name,
+            COUNT(*)::int AS meetings,
+            COALESCE(SUM(m.dur), 0)::int AS total_sec,
+            COALESCE(MAX(m.dur), 0)::int AS longest_sec,
+            (COUNT(*) FILTER (WHERE m.dur >= 1800))::int AS over_30,
+            COALESCE(BOOL_OR(m.running), false) AS in_meeting_now
+     FROM (${base}) m
+     LEFT JOIN users u ON u.id = m.staff_id
+     GROUP BY m.staff_id, u.name
+     ORDER BY total_sec DESC`,
+    params
+  );
+  return { agents: result.rows };
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
@@ -292,4 +396,5 @@ module.exports = {
   getDepartmentIdByKeywordMatch,
   setMeetingMode,
   getMeetingStatus,
+  getMeetingSummary,
 };

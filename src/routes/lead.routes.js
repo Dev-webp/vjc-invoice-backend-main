@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const leadController = require('../controllers/lead.controller');
 const { verifyToken } = require('../middlewares/auth.middleware');
-let teamMonitorController = null; // NEW
+let followupController = null; // NEW
+try { followupController = require('../controllers/followup.controller'); } catch (e) { console.error('Followups disabled:', e.message); } // NEWlet teamMonitorController = null; // NEW
 try { teamMonitorController = require('../controllers/teamMonitor.controller'); } catch (e) { console.error('Team monitor disabled:', e.message); } // NEW
 router.get('/facebook/webhook',  leadController.verifyWebhook);
 router.post('/facebook/webhook', leadController.receiveWebhookLead);
@@ -13,6 +14,12 @@ if (teamMonitorController) {
   router.get('/team-monitor/:agentId/red-flags', verifyToken, teamMonitorController.getAgentRedFlags);
 }
 
+if (followupController) { // NEW (must stay above '/:id')
+  router.get('/calendar', verifyToken, followupController.getCalendar);
+  router.get('/:id/followups', verifyToken, followupController.getFollowups);
+  router.post('/:id/followups', verifyToken, followupController.addFollowup);
+  router.put('/followups/:noteId/done', verifyToken, followupController.markDone);
+}
 router.get('/:id', verifyToken, leadController.getById);
 router.post('/',             verifyToken, leadController.create);
 router.post('/assign',       verifyToken, leadController.assign);

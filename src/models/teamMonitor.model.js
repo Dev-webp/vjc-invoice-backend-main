@@ -9,20 +9,57 @@ const RANGES = {
 
 // staffId = null  -> chairman / mis-executive view (everything)
 // staffId = <id>  -> employee view (only that person's leads, flags, workload)
-const getTeamMonitor = async (rangeKey, staffId = null) => {
-  const key = RANGES[rangeKey] ? rangeKey : 'today';
+const getTeamMonitor = async (rangeKey, staffId = null, selectedDate = null) => {
+    const key = RANGES[rangeKey] ? rangeKey : 'today';
   const [from, to] = RANGES[key];
   const len = from - to + 1;
   const pFrom = from + len;
   const pTo = to + len;
   const sid = staffId === null || staffId === undefined ? null : String(staffId);
   const scoped = sid !== null;
-  const R = [from, to];          // 2 params, for queries that are never scoped
-  const R3 = [from, to, sid];    // 3 params, for queries that use scope()
 
-  const inRange = (col) => `${col}::date BETWEEN CURRENT_DATE - $1::int AND CURRENT_DATE - $2::int`;
+  // Accept only a real YYYY-MM-DD calendar date.
+  const dateMatch =
+    typeof selectedDate === 'string' &&
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(selectedDate);
+
+  const validSelectedDate = (() => {
+    if (!dateMatch) return null;
+
+    const parsed = new Date(`${selectedDate}T00:00:00.000Z`);
+
+    return !Number.isNaN(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === selectedDate
+      ? selectedDate
+      : null;
+  })();
+
+  const previousDate = validSelectedDate
+    ? new Date(
+        new Date(`${validSelectedDate}T00:00:00.000Z`).getTime() -
+          24 * 60 * 60 * 1000
+      ).toISOString().slice(0, 10)
+    : null;
+
+  // Keep parameter positions compatible with the existing SQL queries.
+  const R = validSelectedDate
+    ? [validSelectedDate, validSelectedDate]
+    : [from, to];
+
+  const R3 = validSelectedDate
+    ? [validSelectedDate, validSelectedDate, sid]
+    : [from, to, sid];
+
+  const previousParams = validSelectedDate
+    ? [previousDate, previousDate, sid]
+    : [pFrom, pTo, sid];
+
+  const inRange = (col) =>
+    validSelectedDate
+      ? `${col}::date = $1::date`
+      : `${col}::date BETWEEN CURRENT_DATE - $1::int AND CURRENT_DATE - $2::int`;
+
   const scope = (col) => `($3::text IS NULL OR ${col}::text = $3::text)`;
-
   const summarySql = `
     SELECT
       COUNT(*)::int AS received,
@@ -45,7 +82,7 @@ const getTeamMonitor = async (rangeKey, staffId = null) => {
     byDept, bySource, byHour,
   ] = await Promise.all([
     pool.query(summarySql, R3),
-    pool.query(summarySql, [pFrom, pTo, sid]),
+pool.query(summarySql, previousParams),
     pool.query(`SELECT COUNT(*)::int AS count,
                        COALESCE(EXTRACT(EPOCH FROM (NOW() - MIN(created_at))) / 60, 0)::int AS oldest_min
                 FROM leads WHERE assigned_to IS NULL`),

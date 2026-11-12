@@ -157,12 +157,12 @@ const getMeetingStatus = async (staffId) => {
     `SELECT 1 FROM department_staff WHERE staff_id = $1 LIMIT 1`,
     [staffId]
   );
-  const meetingRow = await pool.query(
-    `SELECT 1 FROM staff_meeting_mode
+    const meetingRow = await pool.query(
+    `SELECT EXTRACT(EPOCH FROM (NOW() - updated_at))::int AS elapsed FROM staff_meeting_mode
      WHERE staff_id = $1 AND in_meeting = true AND updated_at >= CURRENT_DATE`,
     [staffId]
   );
-  return { is_staff: staffRow.rowCount > 0, in_meeting: meetingRow.rowCount > 0 };
+  return { is_staff: staffRow.rowCount > 0, in_meeting: meetingRow.rowCount > 0, elapsed_seconds: meetingRow.rows[0] ? meetingRow.rows[0].elapsed : 0 };
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 

@@ -13,8 +13,11 @@ const getTeamMonitor = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const data = await teamMonitorModel.getTeamMonitor(req.query.range, isAdmin ? null : userId);
-    res.json({ success: true, ...data });
+const data = await teamMonitorModel.getTeamMonitor(
+  req.query.range,
+  isAdmin ? null : userId,
+  req.query.date
+);    res.json({ success: true, ...data });
   } catch (err) {
     console.error('Team monitor error:', err);
     res.status(500).json({ success: false, message: 'Failed to load team monitor' });

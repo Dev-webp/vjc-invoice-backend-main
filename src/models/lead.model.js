@@ -386,8 +386,33 @@ const getPendingAssignmentLeads = async () => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// ▼▼▼ NEW — find existing leads with the same phone number (matches last 10 digits) ▼▼▼
+const findDuplicateLeads = async (numbers) => {
+  const keys = [...new Set(
+    (numbers || [])
+      .map((n) => String(n || '').replace(/\D/g, '').slice(-10))
+      .filter((n) => n.length === 10)
+  )];
+  if (!keys.length) return [];
+
+  const result = await pool.query(
+    `SELECT l.id, l.lead_name, l.contact_number, l.status, l.assigned_to, l.created_at,
+            at.name AS assigned_to_name
+     FROM leads l
+     LEFT JOIN users at ON at.id = l.assigned_to
+     WHERE RIGHT(regexp_replace(COALESCE(l.contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[])
+        OR RIGHT(regexp_replace(COALESCE(l.alternate_contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[])
+     ORDER BY l.created_at DESC
+     LIMIT 5`,
+    [keys]
+  );
+  return result.rows;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   createLead,
+  findDuplicateLeads,
   getAllLeads,
   getLeadById,
   assignLead,

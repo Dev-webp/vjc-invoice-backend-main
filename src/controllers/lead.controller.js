@@ -14,6 +14,21 @@ const create = async (req, res) => {
       });
     }
 
+        // NEW — block duplicates. If this check itself fails, creation continues exactly as before.
+    try {
+      const duplicates = await leadModel.findDuplicateLeads([contact_number, req.body.alternate_contact_number]);
+      if (duplicates.length > 0) {
+        return res.status(409).json({
+          success: false,
+          duplicate: true,
+          duplicates,
+          message: 'This number already exists in the system',
+        });
+      }
+    } catch (dupErr) {
+      console.error('Duplicate check error (non-fatal):', dupErr);
+    }
+
     const createdBy = req.user.id || req.user.userId || req.user._id;
     const lead = await leadModel.createLead(
       { ...req.body, branch: req.body.branch || req.user.location },
@@ -308,8 +323,19 @@ const classifyPendingLead = async (req, res) => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// GET /api/leads/check-duplicate?number=...&alt=...  — used by Add Enquiry while typing
+const checkDuplicate = async (req, res) => {
+  try {
+    const duplicates = await leadModel.findDuplicateLeads([req.query.number, req.query.alt]);
+    res.json({ success: true, exists: duplicates.length > 0, duplicates });
+  } catch (err) {
+    console.error('Check duplicate error:', err);
+    res.status(500).json({ success: false, message: 'Failed to check duplicate' });
+  }
+};
+
 // GET /api/leads/facebook/webhook — Meta verification handshake
-const verifyWebhook = (req, res) => {
+  const verifyWebhook = (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
@@ -439,4 +465,5 @@ module.exports = {
   getAllAssignmentsToday,
   getPendingAssignments,
   classifyPendingLead,
+  checkDuplicate,
 };

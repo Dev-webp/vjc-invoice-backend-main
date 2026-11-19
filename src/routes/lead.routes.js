@@ -36,4 +36,5 @@ router.post('/:id/notes',           verifyToken, leadController.addNote);
 router.get('/:id/profile-history',  verifyToken, leadController.getProfileHistory);
 router.put('/reminders/:noteId/dismiss', verifyToken, leadController.dismissReminder);
 router.put('/assignments/:historyId/notified',  verifyToken, leadController.markAssignmentNotified);
+router.put('/:id/reopen',               verifyToken, leadController.reopenLead);   // NEW
 module.exports = router;

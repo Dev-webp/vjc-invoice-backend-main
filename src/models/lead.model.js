@@ -410,9 +410,111 @@ const findDuplicateLeads = async (numbers) => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// ▼▼▼ NEW — repeat enquiries: one customer (phone number) can have more than one enquiry ▼▼▼
+// Like findDuplicateLeads, but also returns the service (service_type, or the department
+// name for Facebook/Instagram leads) so we can tell "same service" from "different service".
+const findEnquiriesByNumber = async (numbers) => {
+  const keys = [...new Set(
+    (numbers || [])
+      .map((n) => String(n || '').replace(/\D/g, '').slice(-10))
+      .filter((n) => n.length === 10)
+  )];
+  if (!keys.length) return [];
+
+  const result = await pool.query(
+    `SELECT l.id, l.lead_name, l.contact_number, l.status, l.assigned_to, l.created_at,
+            COALESCE(NULLIF(l.service_type, ''), d.name) AS service_type,
+            at.name AS assigned_to_name
+     FROM leads l
+     LEFT JOIN users at ON at.id = l.assigned_to
+     LEFT JOIN departments d ON d.id = l.department_id
+     WHERE RIGHT(regexp_replace(COALESCE(l.contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[])
+        OR RIGHT(regexp_replace(COALESCE(l.alternate_contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[])
+     ORDER BY l.created_at DESC
+     LIMIT 20`,
+    [keys]
+  );
+  return result.rows;
+};
+
+// Link a repeat enquiry to the customer's earlier enquiry (column is created automatically).
+let parentColumnPromise = null;
+const ensureParentColumn = () => {
+  if (!parentColumnPromise) {
+    parentColumnPromise = pool
+      .query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS parent_lead_id INTEGER`)
+      .then(() => true)
+      .catch((err) => { parentColumnPromise = null; throw err; });
+  }
+  return parentColumnPromise;
+};
+
+const setParentLead = async (leadId, parentLeadId) => {
+  await ensureParentColumn();
+  await pool.query(`UPDATE leads SET parent_lead_id = $1 WHERE id = $2`, [parentLeadId, leadId]);
+};
+
+// Other enquiries of the same customer (same phone number) — shown on the history page.
+const getRelatedEnquiries = async (leadId) => {
+  const base = await pool.query(
+    `SELECT contact_number, alternate_contact_number FROM leads WHERE id = $1`,
+    [leadId]
+  );
+  if (!base.rows[0]) return [];
+  const keys = [...new Set(
+    [base.rows[0].contact_number, base.rows[0].alternate_contact_number]
+      .map((n) => String(n || '').replace(/\D/g, '').slice(-10))
+      .filter((n) => n.length === 10)
+  )];
+  if (!keys.length) return [];
+
+  const result = await pool.query(
+    `SELECT l.id, l.lead_name, l.status, l.created_at, l.updated_at, l.assigned_to,
+            COALESCE(NULLIF(l.service_type, ''), d.name) AS service_type,
+            at.name AS assigned_to_name
+     FROM leads l
+     LEFT JOIN users at ON at.id = l.assigned_to
+     LEFT JOIN departments d ON d.id = l.department_id
+     WHERE l.id <> $2
+       AND (RIGHT(regexp_replace(COALESCE(l.contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[])
+         OR RIGHT(regexp_replace(COALESCE(l.alternate_contact_number, ''), '\\D', '', 'g'), 10) = ANY($1::text[]))
+     ORDER BY l.created_at DESC
+     LIMIT 20`,
+    [keys, leadId]
+  );
+  return result.rows;
+};
+
+// Is this consultant online, not in a client meeting and not marked Absent today?
+const isStaffAvailable = async (staffId) => {
+  const result = await pool.query(
+    `SELECT 1 FROM department_staff ds
+     WHERE ds.staff_id = $1
+       AND ds.is_online = true
+       AND ds.staff_id NOT IN (
+         SELECT staff_id FROM staff_meeting_mode
+         WHERE in_meeting = true AND updated_at >= CURRENT_DATE
+       )
+       AND ds.staff_id NOT IN (
+         SELECT staff_id FROM agent_red_flags
+         WHERE flag_date = CURRENT_DATE
+         GROUP BY staff_id
+         HAVING COUNT(*) >= 3
+       )
+     LIMIT 1`,
+    [staffId]
+  );
+  return result.rowCount > 0;
+};
+// ▲▲▲ NEW block ends here ▲▲▲
+
 module.exports = {
   createLead,
-  findDuplicateLeads,
+   findDuplicateLeads,
+  findEnquiriesByNumber,
+  setParentLead,
+  getRelatedEnquiries,
+  isStaffAvailable,
   getAllLeads,
   getLeadById,
   assignLead,

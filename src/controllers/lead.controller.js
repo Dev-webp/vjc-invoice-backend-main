@@ -14,10 +14,20 @@ const create = async (req, res) => {
       });
     }
 
-        // NEW — block duplicates. If this check itself fails, creation continues exactly as before.
+            let parentLeadId = null;   // NEW — set when this is a repeat enquiry of an existing customer
+    // NEW — block duplicates. If this check itself fails, creation continues exactly as before.
     try {
-      const duplicates = await leadModel.findDuplicateLeads([contact_number, req.body.alternate_contact_number]);
-      if (duplicates.length > 0) {
+           const duplicates = await leadModel.findEnquiriesByNumber([contact_number, req.body.alternate_contact_number]);
+            // NEW — repeat enquiries: only an ACTIVE enquiry for the SAME service is blocked.
+      // Closed / Dead enquiries need the user's choice (reopen, or create a new enquiry under the same customer).
+      const norm = (v) => String(v || '').trim().toLowerCase();
+      const isInactive = (d) => d.status === 'Closed' || d.status === 'Dead';
+      const activeSame = duplicates.filter(
+        (d) => !isInactive(d) && (!norm(d.service_type) || norm(d.service_type) === norm(req.body.service_type))
+      );
+      const inactive = duplicates.filter(isInactive);
+      if (duplicates.length > 0) parentLeadId = duplicates[0].id;
+      if (activeSame.length > 0 || (inactive.length > 0 && !req.body.confirm_new_enquiry)) {
         return res.status(409).json({
           success: false,
           duplicate: true,
@@ -34,6 +44,12 @@ const create = async (req, res) => {
       { ...req.body, branch: req.body.branch || req.user.location },
       createdBy
     );
+
+        // NEW — link a repeat enquiry to the customer's earlier enquiry (old history stays on the old one)
+    if (parentLeadId) {
+      try { await leadModel.setParentLead(lead.id, parentLeadId); }
+      catch (e) { console.error('Set parent lead error (non-fatal):', e.message); }
+    }
 
     let finalLead = lead;
     try {
@@ -205,7 +221,11 @@ const getProfileHistory = async (req, res) => {
   try {
     const data = await leadModel.getLeadProfileHistory(req.params.id);
     if (!data.lead) return res.status(404).json({ success: false, message: 'Lead not found' });
-    res.json({ success: true, ...data });
+        // NEW — other enquiries of the same customer; if this fails the history page still loads
+    let related = [];
+    try { related = await leadModel.getRelatedEnquiries(req.params.id); }
+    catch (e) { console.error('Related enquiries error (non-fatal):', e.message); }
+    res.json({ success: true, ...data, related });
   } catch (err) {
     console.error('Get profile history error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch profile history' });
@@ -323,10 +343,73 @@ const classifyPendingLead = async (req, res) => {
 };
 // ▲▲▲ NEW block ends here ▲▲▲
 
+// PUT /api/leads/:id/reopen — reopen a Closed / Dead enquiry.
+// The lead row is kept, so follow-ups, notes, consultant details and assignment history all stay.
+const reopenLead = async (req, res) => {
+  try {
+    const leadId = Number(req.params.id);
+    if (!Number.isSafeInteger(leadId) || leadId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    }
+
+    const lead = await leadModel.getLeadById(leadId);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+    if (lead.status !== 'Closed' && lead.status !== 'Dead') {
+      return res.status(400).json({ success: false, message: 'Only Closed or Dead enquiries can be reopened' });
+    }
+
+    const userId = req.user.id || req.user.userId || req.user._id;
+    const departmentModel = require('../models/department.model');
+
+    // history note first, so it never counts as the consultant's reply for the new SLA
+    try {
+      await leadModel.addNoteToLead(leadId, { remark: 'Enquiry reopened', add_to_reminder: false }, userId);
+    } catch (noteErr) {
+      console.error('Reopen note error (non-fatal):', noteErr.message);
+    }
+
+    await leadModel.updateLeadStatus(leadId, 'New');
+
+    let departmentId = lead.department_id || null;
+    if (!departmentId && lead.service_type) {
+      departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
+    }
+
+    // 1) same consultant if available  2) otherwise department round-robin  3) otherwise Pending Assignment
+    let staffId = null;
+    let reason = 'reopened';
+    try {
+      if (lead.assigned_to && (await leadModel.isStaffAvailable(lead.assigned_to))) {
+        staffId = lead.assigned_to;
+      }
+    } catch (availErr) {
+      console.error('Reopen availability check error (falling back to round-robin):', availErr.message);
+    }
+    if (!staffId && departmentId) {
+      staffId = await departmentModel.pickNextStaffForDepartment(departmentId);
+      reason = 'reopened_round_robin';
+    }
+
+    if (staffId) {
+      await leadModel.autoAssignLead(leadId, staffId, departmentId);
+      await leadModel.logAssignmentHistory(leadId, staffId, reason);
+      sendAssignmentWhatsapp(leadId, staffId, reason).catch(() => {});
+    } else {
+      await leadModel.unassignLead(leadId);
+    }
+
+    const updated = await leadModel.getLeadById(leadId);
+    res.json({ success: true, lead: updated, assigned: !!staffId });
+  } catch (err) {
+    console.error('Reopen lead error:', err);
+    res.status(500).json({ success: false, message: 'Failed to reopen lead' });
+  }
+};
+
 // GET /api/leads/check-duplicate?number=...&alt=...  — used by Add Enquiry while typing
 const checkDuplicate = async (req, res) => {
   try {
-    const duplicates = await leadModel.findDuplicateLeads([req.query.number, req.query.alt]);
+        const duplicates = await leadModel.findEnquiriesByNumber([req.query.number, req.query.alt]);
     res.json({ success: true, exists: duplicates.length > 0, duplicates });
   } catch (err) {
     console.error('Check duplicate error:', err);
@@ -466,4 +549,5 @@ module.exports = {
   getPendingAssignments,
   classifyPendingLead,
   checkDuplicate,
+  reopenLead,
 };

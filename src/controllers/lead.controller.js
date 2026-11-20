@@ -64,7 +64,7 @@ const create = async (req, res) => {
         }
         finalLead = await leadModel.autoAssignLead(lead.id, req.body.direct_assign_staff_id, departmentId);
         await leadModel.logAssignmentHistory(lead.id, req.body.direct_assign_staff_id, 'manual_walkin');
-        sendAssignmentWhatsapp(lead.id, req.body.direct_assign_staff_id, 'manual_walkin').catch(() => {}); // NEW
+       await sendAssignmentWhatsapp(lead.id, req.body.direct_assign_staff_id, 'manual_walkin'); // NEW
       } else if (lead.service_type) {
         const departmentId = await departmentModel.getDepartmentIdByServiceType(lead.service_type);
         if (departmentId) {
@@ -72,7 +72,7 @@ const create = async (req, res) => {
          if (staffId) {
             finalLead = await leadModel.autoAssignLead(lead.id, staffId, departmentId);
             await leadModel.logAssignmentHistory(lead.id, staffId, 'auto_round_robin');
-            sendAssignmentWhatsapp(lead.id, staffId, 'auto_round_robin').catch(() => {}); // NEW
+await sendAssignmentWhatsapp(lead.id, staffId, 'auto_round_robin'); // NEW
           } else {
             console.warn(`No available staff (all absent?) for department ${departmentId}`);
           }
@@ -167,7 +167,7 @@ const assign = async (req, res) => {
     const updated = await leadModel.assignLeadsBulk(ids, branch, staff_id, assignedBy);
 
     // NEW — WhatsApp notify for this manual bulk assign (non-blocking)
-    for (const u of updated) sendAssignmentWhatsapp(u.id, staff_id, 'manual').catch(() => {});
+await Promise.all(updated.map((u) => sendAssignmentWhatsapp(u.id, staff_id, 'manual')));
 
     res.json({ success: true, updated });
   } catch (err) {
@@ -333,7 +333,7 @@ const classifyPendingLead = async (req, res) => {
     if (staffId) {
       await leadModel.autoAssignLead(req.params.id, staffId, department_id);
       await leadModel.logAssignmentHistory(req.params.id, staffId, 'auto_round_robin_manual_classify');
-      sendAssignmentWhatsapp(req.params.id, staffId, 'auto_round_robin_manual_classify').catch(() => {}); // NEW
+      await sendAssignmentWhatsapp(req.params.id, staffId, 'auto_round_robin_manual_classify'); // NEW
     }
     res.json({ success: true, assigned: !!staffId });
   } catch (err) {
@@ -518,7 +518,7 @@ try {
        if (staffId) {
       await leadModel.autoAssignLead(newLead.id, staffId, departmentId);
       await leadModel.logAssignmentHistory(newLead.id, staffId, 'auto_round_robin_fb');
-      sendAssignmentWhatsapp(newLead.id, staffId, 'auto_round_robin_fb').catch(() => {}); // NEW
+await sendAssignmentWhatsapp(newLead.id, staffId, 'auto_round_robin_fb'); // NEW
     } else {
       await leadModel.setLeadDepartment(newLead.id, departmentId);
       console.warn(`No online staff available for department ${departmentId} — lead ${newLead.id} pending assignment`);

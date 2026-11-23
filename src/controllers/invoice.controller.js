@@ -152,8 +152,16 @@ const invoiceController = {
     }
   },
 
-  downloadPdf: async (req, res) => {
+    downloadPdf: async (req, res) => {
     try {
+      // NEW — PDF download only after approval (chairman/mis-executive can still open pending ones to review)
+      const role = req.user?.role;
+      if (role !== 'chairman' && role !== 'mis-executive') {
+        const chk = await pool.query('SELECT status FROM invoices WHERE id = $1', [req.params.id]);
+        if (!chk.rows[0] || !['Approved', 'Paid'].includes(chk.rows[0].status)) {
+          return res.status(403).json({ success: false, message: 'Invoice PDF is available only after chairman approval' });
+        }
+      }
       const { pdfBuffer, invoice_number } = await invoiceService.getInvoicePdfBuffer(req.params.id);
       res.set({
         'Content-Type': 'application/pdf',

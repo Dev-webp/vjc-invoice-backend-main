@@ -34,6 +34,10 @@ const getCandidates = async (onlyId = null) => {
   const r = await pool.query(
     `SELECT l.id, l.lead_name, l.contact_number, l.status, l.assigned_to,
             l.department_id, l.service_type,
+            COALESCE(l.department_id,
+              (SELECT d.id FROM departments d
+                WHERE lower(trim(d.name)) = lower(trim(l.service_type)) LIMIT 1)
+            ) AS resolved_department_id,
             COALESCE(l.cycle_no, 1) AS cycle_no, l.hold_until,
             u.name AS consultant_name,
             GREATEST(l.updated_at,
@@ -66,7 +70,7 @@ const classify = (row, cfg = getConfig()) => {
   if (row.hold_until && new Date(row.hold_until) > new Date()) return { state: 'hold', reason: 'approved hold active' };
   if (row.has_future_followup) return { state: 'hold', reason: 'future follow-up scheduled' };
   if (Number(row.cycle_no) >= cfg.maxCycles) return { state: 'exception', reason: `max cycles (${cfg.maxCycles}) reached` };
-  if (!row.department_id && !row.service_type) return { state: 'exception', reason: 'no department / service type' };
+  if (!row.resolved_department_id) return { state: 'exception', reason: 'no department linked (set department / service type)' };
   return { state: 'eligible', reason: `idle ${idle.toFixed(1)}d >= ${need}d` };
 };
 

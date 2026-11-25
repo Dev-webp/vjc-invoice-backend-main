@@ -8,9 +8,8 @@ const { sendAssignmentWhatsapp } = require('../services/whatsapp.service');
 
 // Recycling = ONE controlled event: next eligible consultant (round-robin, skipping the old one) -> Cycle N+1
 const recycleOne = async (row, cfg) => {
-  let deptId = row.department_id || null;
-  if (!deptId && row.service_type) deptId = await departmentModel.getDepartmentIdByServiceType(row.service_type);
-  if (!deptId) return { ok: false, reason: 'no department' };
+  const deptId = row.resolved_department_id || null;
+  if (!deptId) return { ok: false, reason: 'no department linked to this lead' };
 
   const staffId = await departmentModel.pickNextStaffForDepartment(deptId, row.assigned_to);
   if (!staffId) return { ok: false, reason: 'no consultant available (stays in queue)' };

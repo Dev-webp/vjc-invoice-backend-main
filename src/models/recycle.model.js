@@ -1,5 +1,6 @@
 // NEW FILE — Lead Recycling (rules engine + queries). Touches NO existing file.
 const pool = require('../config/db');
+const departmentModel = require('./department.model');
 
 // Thresholds — defaults below; can be overridden later via env WITHOUT code change.
 const getConfig = () => ({
@@ -59,6 +60,18 @@ const getCandidates = async (onlyId = null) => {
      ORDER BY l.updated_at ASC`,
     params
   );
+  // No department_id and no exact name match -> reuse the EXISTING keyword rules
+  // (same ones Facebook leads use). Read-only: nothing is written to the lead.
+  const memo = new Map();
+  for (const row of r.rows) {
+    if (!row.resolved_department_id && row.service_type) {
+      const key = String(row.service_type).toLowerCase();
+      if (!memo.has(key)) {
+        memo.set(key, await departmentModel.getDepartmentIdByKeywordMatch(row.service_type).catch(() => null));
+      }
+      row.resolved_department_id = memo.get(key) || null;
+    }
+  }
   return r.rows;
 };
 

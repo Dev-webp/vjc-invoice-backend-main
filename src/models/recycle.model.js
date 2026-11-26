@@ -1,20 +1,15 @@
-// NEW FILE (v2) — Lead lifecycle + Recycling rules engine. Touches NO existing file.
-// Lifecycle labels / suppression / cooling / age counters are stored in NEW columns,
-// the existing `status` column and its dropdown are never changed ("map to existing labels").
+// NEW FILE (v3) — Lead lifecycle + Recycling rules engine + configurable trigger matrix. Touches NO existing file.
 const pool = require('../config/db');
 const departmentModel = require('./department.model');
 
+// Not part of the trigger matrix -> stay env-based
 const getConfig = () => ({
-  warmDays: Number(process.env.RECYCLE_WARM_DAYS) || 7,        // Warm: no meaningful activity for N days
-  coldDays: Number(process.env.RECYCLE_COLD_DAYS) || 14,       // Cold: no meaningful activity for N days
-  deadDays: Number(process.env.RECYCLE_DEAD_DAYS) || 3,        // Dead: N days in Dead status
-  maxCycles: Number(process.env.RECYCLE_MAX_CYCLES) || 2,      // Cycle 2 is the last one
-  coolingDays: Number(process.env.RECYCLE_COOLING_DAYS) || 3,  // after a recycle, no new recycle for N days
-  minStatusDays: Number(process.env.RECYCLE_MIN_STATUS_DAYS) || 1, // never recycle same day a status was set
+  maxCycles: Number(process.env.RECYCLE_MAX_CYCLES) || 2,
+  coolingDays: Number(process.env.RECYCLE_COOLING_DAYS) || 3,
+  minStatusDays: Number(process.env.RECYCLE_MIN_STATUS_DAYS) || 1,
   batch: Number(process.env.RECYCLE_BATCH) || 50,
 });
 
-// Terminal / suppressed reasons (Section 02): never auto-recycled.
 const SUPPRESS_REASONS = {
   converted: 'Converted',
   disqualified: 'Disqualified',
@@ -23,8 +18,29 @@ const SUPPRESS_REASONS = {
   duplicate: 'Duplicate',
   legal_consent: 'Legal / Consent Restriction',
 };
+const DEAD_REASONS = { not_reachable: 'Not Reachable', budget: 'Budget', timing: 'Timing' };
 
-// Only ADDS columns (IF NOT EXISTS). Existing columns/data untouched.
+// ── Section 03 trigger matrix: suggested defaults (Director/Admin can override globally or per department) ──
+const TRIGGERS = [
+  { key: 'warm_reminder', label: 'Warm: no meaningful activity → reminder', unit: 'calendar days' },
+  { key: 'warm_recycle', label: 'Warm: still no progress → auto-recycle', unit: 'calendar days' },
+  { key: 'cold_reminder', label: 'Cold: no meaningful activity → reminder', unit: 'calendar days' },
+  { key: 'cold_recycle', label: 'Cold: still no progress → auto-recycle', unit: 'calendar days' },
+  { key: 'dead_not_reachable', label: 'Dead (Not Reachable): cooldown, then queue & reassign', unit: 'calendar days in Dead' },
+  { key: 'dead_min_attempts', label: 'Dead (Not Reachable): minimum contact attempts', unit: 'attempts' },
+  { key: 'dead_budget_timing', label: 'Dead (Budget / Timing): recycle after customer date', unit: 'on / off' },
+];
+const getDefaults = () => ({
+  warm_reminder: { enabled: false, value: 3 },   // OFF until the reminder message wording is verified
+  warm_recycle: { enabled: true, value: Number(process.env.RECYCLE_WARM_DAYS) || 7 },
+  cold_reminder: { enabled: false, value: 7 },
+  cold_recycle: { enabled: true, value: Number(process.env.RECYCLE_COLD_DAYS) || 14 },
+  dead_not_reachable: { enabled: true, value: Number(process.env.RECYCLE_DEAD_DAYS) || 3 },
+  dead_min_attempts: { enabled: true, value: 3 },
+  dead_budget_timing: { enabled: true, value: 0 },
+});
+
+// Only ADDS columns / tables (IF NOT EXISTS). Existing columns/data untouched.
 let ready = null;
 const ensureColumns = () => {
   if (!ready) {
@@ -38,9 +54,28 @@ const ensureColumns = () => {
         ADD COLUMN IF NOT EXISTS suppress_reason VARCHAR(30),
         ADD COLUMN IF NOT EXISTS suppress_note VARCHAR(255),
         ADD COLUMN IF NOT EXISTS suppressed_at TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS suppressed_by INTEGER`);
-      // "Time in current status": a tiny DB trigger only fills the NEW column status_changed_at
-      // when `status` changes. It never alters status or any other column. Failure here is non-fatal.
+        ADD COLUMN IF NOT EXISTS suppressed_by INTEGER,
+        ADD COLUMN IF NOT EXISTS dead_reason VARCHAR(20)`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS recycle_rules (
+        id SERIAL PRIMARY KEY,
+        department_id INTEGER,
+        trigger_key VARCHAR(40) NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        value INTEGER NOT NULL DEFAULT 0,
+        updated_by INTEGER,
+        updated_at TIMESTAMP DEFAULT NOW())`);
+      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS recycle_rules_uq
+                        ON recycle_rules ((COALESCE(department_id, 0)), trigger_key)`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS recycle_reminders (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER NOT NULL,
+        cycle_no INTEGER NOT NULL DEFAULT 1,
+        kind VARCHAR(30) NOT NULL,
+        user_id INTEGER,
+        channel VARCHAR(20),
+        sent_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (lead_id, cycle_no, kind))`);
+      // "Time in current status": tiny trigger that only fills the NEW column status_changed_at. Non-fatal if it fails.
       try {
         await pool.query(`
           CREATE OR REPLACE FUNCTION leads_track_status_change() RETURNS trigger AS $fn$
@@ -61,9 +96,55 @@ const ensureColumns = () => {
   return ready;
 };
 
+// ── Rules (per department override -> global row -> built-in default) ──
+const loadRules = async () => {
+  await ensureColumns();
+  const r = await pool.query(`SELECT department_id, trigger_key, enabled, value FROM recycle_rules`);
+  const map = new Map();
+  r.rows.forEach((x) => map.set(`${x.department_id || 0}:${x.trigger_key}`, { enabled: x.enabled, value: Number(x.value) }));
+  return map;
+};
+const ruleFor = (rules, deptId, key) =>
+  (deptId && rules.get(`${deptId}:${key}`)) || rules.get(`0:${key}`) || getDefaults()[key];
+
+const getContext = async () => ({ cfg: getConfig(), rules: await loadRules() });
+
+const getRulesPayload = async () => {
+  await ensureColumns();
+  const [d, r] = await Promise.all([
+    pool.query(`SELECT id, name FROM departments ORDER BY id`),
+    pool.query(`SELECT department_id, trigger_key, enabled, value FROM recycle_rules`),
+  ]);
+  return { departments: d.rows, rules: r.rows, triggers: TRIGGERS, defaults: getDefaults() };
+};
+
+const saveRule = async (departmentId, key, enabled, value, userId) => {
+  if (!TRIGGERS.some((t) => t.key === key)) return null;
+  const r = await pool.query(
+    `INSERT INTO recycle_rules (department_id, trigger_key, enabled, value, updated_by, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT ((COALESCE(department_id, 0)), trigger_key)
+     DO UPDATE SET enabled = EXCLUDED.enabled, value = EXCLUDED.value,
+                   updated_by = EXCLUDED.updated_by, updated_at = NOW()
+     RETURNING department_id, trigger_key, enabled, value`,
+    [departmentId || null, key, !!enabled, Math.max(0, Math.min(3650, Number(value) || 0)), userId || null]
+  );
+  return r.rows[0];
+};
+
+const resetRule = async (departmentId, key) => {
+  await ensureColumns();
+  const r = await pool.query(
+    `DELETE FROM recycle_rules WHERE COALESCE(department_id, 0) = COALESCE($1, 0) AND trigger_key = $2 RETURNING id`,
+    [departmentId || null, key]
+  );
+  return r.rowCount;
+};
+
+// ── Lead rows ──
 const SELECT_SQL = `
   SELECT l.id, l.lead_name, l.contact_number, l.status, l.assigned_to,
-         l.department_id, l.service_type,
+         l.department_id, l.service_type, l.dead_reason,
          COALESCE(l.department_id,
            (SELECT d.id FROM departments d
              WHERE lower(trim(d.name)) = lower(trim(l.service_type)) LIMIT 1)
@@ -81,7 +162,9 @@ const SELECT_SQL = `
                  WHERE n.lead_id = l.id AND n.add_to_reminder = true
                    AND COALESCE(n.dismissed, false) = false
                    AND n.reminder_date >= CURRENT_DATE) AS has_future_followup,
-         (SELECT COUNT(*) FROM lead_notes n WHERE n.lead_id = l.id)::int AS contact_attempts
+         (SELECT COUNT(*) FROM lead_notes n WHERE n.lead_id = l.id)::int AS contact_attempts,
+         (SELECT COUNT(*) FROM recycle_reminders rr
+            WHERE rr.lead_id = l.id AND rr.cycle_no = COALESCE(l.cycle_no, 1))::int AS reminders_sent
   FROM leads l
   LEFT JOIN users u ON u.id = l.assigned_to
   LEFT JOIN LATERAL (
@@ -94,7 +177,6 @@ const SELECT_SQL = `
   ) la ON true`;
 
 const resolveDepartments = async (rows) => {
-  // No department_id and no exact name match -> reuse EXISTING keyword rules (read-only).
   const memo = new Map();
   for (const row of rows) {
     if (!row.resolved_department_id && row.service_type) {
@@ -139,35 +221,77 @@ const getLeadLifecycleRow = async (id) => {
   return rows[0] || null;
 };
 
-// ── RULES ENGINE: eligible / hold / cooling / exception / not_due / suppressed / not_candidate ──
-const classify = (row, cfg = getConfig()) => {
+// ── Reminder (Warm / Cold "no meaningful activity") ──
+const reminderDue = (row, ctx) => {
+  if (row.suppress_reason || !['Warm', 'Cold'].includes(row.status)) return null;
+  const key = row.status === 'Warm' ? 'warm_reminder' : 'cold_reminder';
+  const t = ruleFor(ctx.rules, row.resolved_department_id, key);
+  if (!t.enabled) return null;
+  return (Number(row.idle_days) || 0) >= t.value ? key : null;
+};
+
+// ── RULES ENGINE ──
+// states: eligible / hold / cooling / exception / reminder / not_due / suppressed / not_candidate
+const classify = (row, ctx) => {
+  const { cfg } = ctx;
+  const R = (k) => ruleFor(ctx.rules, row.resolved_department_id, k);
   if (row.suppress_reason) return { state: 'suppressed', reason: SUPPRESS_REASONS[row.suppress_reason] || row.suppress_reason };
   if (!['Warm', 'Cold', 'Dead'].includes(row.status)) return { state: 'not_candidate', reason: `status ${row.status} is never recycled` };
 
   const idle = Number(row.idle_days) || 0;
   const inStatus = Number(row.days_in_status) || 0;
-  let due;
-  let reason;
+  const now = new Date();
+  const holdActive = row.hold_until && new Date(row.hold_until) > now;
+  let due = false;
+  let reason = '';
+
   if (row.status === 'Dead') {
-    due = inStatus >= cfg.deadDays;
-    reason = `in Dead ${inStatus.toFixed(1)}d ${due ? '>=' : '<'} ${cfg.deadDays}d`;
+    if (!row.dead_reason) return { state: 'exception', reason: 'Dead reason not set (choose Not Reachable / Budget / Timing)' };
+    if (row.dead_reason === 'not_reachable') {
+      const t = R('dead_not_reachable');
+      const m = R('dead_min_attempts');
+      if (!t.enabled) return { state: 'not_due', reason: 'trigger disabled' };
+      if (m.enabled && Number(row.contact_attempts) < m.value) {
+        return { state: 'not_due', reason: `Not Reachable: attempts ${row.contact_attempts} < min ${m.value}` };
+      }
+      due = inStatus >= t.value;
+      reason = `Not Reachable: in Dead ${inStatus.toFixed(1)}d ${due ? '>=' : '<'} ${t.value}d`;
+    } else {
+      const t = R('dead_budget_timing');
+      const label = DEAD_REASONS[row.dead_reason] || row.dead_reason;
+      if (!t.enabled) return { state: 'not_due', reason: 'trigger disabled' };
+      if (holdActive) return { state: 'hold', reason: `${label}: waiting for customer date` };
+      if (row.has_future_followup) return { state: 'hold', reason: 'future follow-up scheduled' };
+      if (!row.hold_until) return { state: 'exception', reason: `${label}: customer follow-up date needed` };
+      due = true;
+      reason = `${label}: customer date reached`;
+    }
   } else {
-    const need = row.status === 'Warm' ? cfg.warmDays : cfg.coldDays;
-    due = idle >= need && inStatus >= cfg.minStatusDays;
-    reason = `no activity ${idle.toFixed(1)}d ${idle >= need ? '>=' : '<'} ${need}d`;
+    const t = R(row.status === 'Warm' ? 'warm_recycle' : 'cold_recycle');
+    if (!t.enabled) {
+      due = false;
+      reason = 'trigger disabled';
+    } else {
+      due = idle >= t.value && inStatus >= cfg.minStatusDays;
+      reason = `no activity ${idle.toFixed(1)}d ${idle >= t.value ? '>=' : '<'} ${t.value}d`;
+    }
   }
-  if (!due) return { state: 'not_due', reason };
-  if (row.cooling_until && new Date(row.cooling_until) > new Date()) {
+
+  if (!due) {
+    const rk = reminderDue(row, ctx);
+    if (rk) return { state: 'reminder', reason: `no activity ${idle.toFixed(1)}d — reminder / follow-up warning` };
+    return { state: 'not_due', reason };
+  }
+  if (row.cooling_until && new Date(row.cooling_until) > now) {
     return { state: 'cooling', reason: `cooling period until ${new Date(row.cooling_until).toLocaleDateString('en-GB')}` };
   }
-  if (row.hold_until && new Date(row.hold_until) > new Date()) return { state: 'hold', reason: 'approved hold active' };
+  if (holdActive) return { state: 'hold', reason: 'approved hold active' };
   if (row.has_future_followup) return { state: 'hold', reason: 'future follow-up scheduled' };
   if (Number(row.cycle_no) >= cfg.maxCycles) return { state: 'exception', reason: `max cycles (${cfg.maxCycles}) reached` };
   if (!row.resolved_department_id) return { state: 'exception', reason: 'no department linked (set department / service type)' };
   return { state: 'eligible', reason };
 };
 
-// Section 02 "Ownership state" — derived from stored fields, so it is never stale.
 const ownershipState = (row, c) => {
   if (row.suppress_reason || row.status === 'Closed') return 'Closed';
   if (c.state === 'cooling') return 'Cooling Period';
@@ -177,21 +301,21 @@ const ownershipState = (row, c) => {
   return 'Assigned';
 };
 
-// Section 02 "Lead status" — maps new labels onto the EXISTING status (no new status values written).
 const lifecycleStatus = (row) => {
   if (row.suppress_reason) return SUPPRESS_REASONS[row.suppress_reason] || row.suppress_reason;
   if (row.status === 'New' && Number(row.contact_attempts) > 0) return 'Attempting Contact';
   return row.status;
 };
 
-const decorate = (row, cfg = getConfig()) => {
-  const c = classify(row, cfg);
+const decorate = (row, ctx) => {
+  const c = classify(row, ctx);
   const d = (v) => Math.floor(Number(v) || 0);
   return {
     ...row,
     ...c,
     ownership_state: ownershipState(row, c),
     lifecycle_status: lifecycleStatus(row),
+    dead_reason_label: row.dead_reason ? DEAD_REASONS[row.dead_reason] || row.dead_reason : null,
     total_age_days: d(row.total_age_days),
     idle_days: d(row.idle_days),
     days_in_status: d(row.days_in_status),
@@ -199,7 +323,7 @@ const decorate = (row, cfg = getConfig()) => {
   };
 };
 
-// Guarded update: still Warm/Cold/Dead, not suppressed, below max cycles — else nothing changes.
+// ── Writes ──
 const markRecycled = async (leadId, cfg) => {
   const r = await pool.query(
     `UPDATE leads
@@ -207,6 +331,7 @@ const markRecycled = async (leadId, cfg) => {
             recycled_at = NOW(),
             cooling_until = NOW() + ($3::int * INTERVAL '1 day'),
             hold_until = NULL,
+            dead_reason = NULL,
             status = 'New',
             status_changed_at = NOW(),
             updated_at = NOW()
@@ -220,14 +345,49 @@ const markRecycled = async (leadId, cfg) => {
   return r.rows[0] || null;
 };
 
-const setHoldUntil = async (leadId, days) => {
+const isDate = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s));
+
+// hold for N days, or "until end of <date>" (study intakes, visa windows, customer dates)
+const setHold = async (leadId, { days = 0, until = null }) => {
   await ensureColumns();
+  const untilDate = isDate(until) ? until : null;
   const r = await pool.query(
     `UPDATE leads
-        SET hold_until = CASE WHEN $2::int > 0 THEN NOW() + ($2::int * INTERVAL '1 day') ELSE NULL END
+        SET hold_until = CASE
+              WHEN $2::text IS NOT NULL THEN (($2::text)::date + 1)::timestamp
+              WHEN $3::int > 0 THEN NOW() + ($3::int * INTERVAL '1 day')
+              ELSE NULL END
       WHERE id = $1 AND status IN ('Warm','Cold','Dead')
       RETURNING id, hold_until`,
-    [leadId, days]
+    [leadId, untilDate, Math.max(0, Math.min(365, Number(days) || 0))]
+  );
+  return r.rows[0] || null;
+};
+
+const setDeadReason = async (leadId, reason, date) => {
+  await ensureColumns();
+  if (!DEAD_REASONS[reason]) return null;
+  const untilDate = reason !== 'not_reachable' && isDate(date) ? date : null;
+  const r = await pool.query(
+    `UPDATE leads
+        SET dead_reason = $2,
+            hold_until = CASE WHEN $3::text IS NOT NULL THEN (($3::text)::date + 1)::timestamp ELSE hold_until END
+      WHERE id = $1 AND status = 'Dead'
+      RETURNING id, dead_reason, hold_until`,
+    [leadId, reason, untilDate]
+  );
+  return r.rows[0] || null;
+};
+
+// Resolve "no department" exception. Only fills an EMPTY department_id; never overwrites one.
+const setDepartment = async (leadId, departmentId) => {
+  await ensureColumns();
+  const r = await pool.query(
+    `UPDATE leads SET department_id = $2
+      WHERE id = $1 AND department_id IS NULL
+        AND EXISTS (SELECT 1 FROM departments d WHERE d.id = $2)
+      RETURNING id, department_id`,
+    [leadId, departmentId]
   );
   return r.rows[0] || null;
 };
@@ -257,7 +417,20 @@ const releaseSuppression = async (leadId) => {
   return r.rows[0] || null;
 };
 
+const recordReminder = async (leadId, cycleNo, kind, userId, channel) => {
+  const r = await pool.query(
+    `INSERT INTO recycle_reminders (lead_id, cycle_no, kind, user_id, channel)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (lead_id, cycle_no, kind) DO NOTHING
+     RETURNING id`,
+    [leadId, cycleNo, kind, userId || null, channel || null]
+  );
+  return r.rows[0] || null;
+};
+
 module.exports = {
-  SUPPRESS_REASONS, getConfig, ensureColumns, getCandidates, getSuppressed, getLeadLifecycleRow,
-  classify, ownershipState, lifecycleStatus, decorate, markRecycled, setHoldUntil, suppressLead, releaseSuppression,
+  SUPPRESS_REASONS, DEAD_REASONS, TRIGGERS, getConfig, getDefaults, ensureColumns, getContext,
+  getRulesPayload, saveRule, resetRule, getCandidates, getSuppressed, getLeadLifecycleRow,
+  reminderDue, classify, ownershipState, lifecycleStatus, decorate,
+  markRecycled, setHold, setDeadReason, setDepartment, suppressLead, releaseSuppression, recordReminder,
 };

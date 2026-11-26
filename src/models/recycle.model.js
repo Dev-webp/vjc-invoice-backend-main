@@ -18,7 +18,19 @@ const SUPPRESS_REASONS = {
   duplicate: 'Duplicate',
   legal_consent: 'Legal / Consent Restriction',
 };
-const DEAD_REASONS = { not_reachable: 'Not Reachable', budget: 'Budget', timing: 'Timing' };
+const DEAD_REASONS = {
+  not_reachable: 'Not Reachable',
+  no_response: 'No Response / Follow-up Missed',
+  budget: 'Budget / Not Now',
+  timing: 'Timing',
+  not_interested: 'Not Interested',
+  wrong_number: 'Wrong Number / Invalid',
+  duplicate: 'Duplicate',
+  not_eligible: 'Not Eligible / Service Not Offered',
+  do_not_contact: 'Do Not Contact / Opt-out',
+};
+// reasons that are suppressed automatically the moment they are recorded
+const AUTO_SUPPRESS = { wrong_number: 'invalid_contact', duplicate: 'duplicate', do_not_contact: 'do_not_contact' };
 
 // ── Section 03 trigger matrix: suggested defaults (Director/Admin can override globally or per department) ──
 const TRIGGERS = [
@@ -26,9 +38,9 @@ const TRIGGERS = [
   { key: 'warm_recycle', label: 'Warm: still no progress → auto-recycle', unit: 'calendar days' },
   { key: 'cold_reminder', label: 'Cold: no meaningful activity → reminder', unit: 'calendar days' },
   { key: 'cold_recycle', label: 'Cold: still no progress → auto-recycle', unit: 'calendar days' },
-  { key: 'dead_not_reachable', label: 'Dead (Not Reachable): cooldown, then queue & reassign', unit: 'calendar days in Dead' },
-  { key: 'dead_min_attempts', label: 'Dead (Not Reachable): minimum contact attempts', unit: 'attempts' },
-  { key: 'dead_budget_timing', label: 'Dead (Budget / Timing): recycle after customer date', unit: 'on / off' },
+  { key: 'dead_not_reachable', label: 'Dead (Not Reachable / No Response): cooldown, then queue & reassign', unit: 'calendar days in Dead' },
+  { key: 'dead_min_attempts', label: 'Dead (Not Reachable / No Response): minimum attempts on distinct days', unit: 'distinct days' },
+  { key: 'dead_budget_timing', label: 'Dead (Budget / Not Now / Timing): recycle after customer date', unit: 'on / off' },
 ];
 const getDefaults = () => ({
   warm_reminder: { enabled: false, value: 3 },   // OFF until the reminder message wording is verified
@@ -55,7 +67,20 @@ const ensureColumns = () => {
         ADD COLUMN IF NOT EXISTS suppress_note VARCHAR(255),
         ADD COLUMN IF NOT EXISTS suppressed_at TIMESTAMP,
         ADD COLUMN IF NOT EXISTS suppressed_by INTEGER,
-        ADD COLUMN IF NOT EXISTS dead_reason VARCHAR(20)`);
+        ADD COLUMN IF NOT EXISTS dead_reason VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS dead_outcome VARCHAR(120),
+        ADD COLUMN IF NOT EXISTS dead_notes VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS duplicate_of INTEGER`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS recycle_audit (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER NOT NULL,
+        action VARCHAR(30) NOT NULL,
+        actor_id INTEGER,
+        actor_role VARCHAR(30),
+        reason TEXT NOT NULL,
+        details JSONB,
+        created_at TIMESTAMP DEFAULT NOW())`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS recycle_audit_lead_idx ON recycle_audit (lead_id)`);
       await pool.query(`CREATE TABLE IF NOT EXISTS recycle_rules (
         id SERIAL PRIMARY KEY,
         department_id INTEGER,
@@ -144,7 +169,8 @@ const resetRule = async (departmentId, key) => {
 // ── Lead rows ──
 const SELECT_SQL = `
   SELECT l.id, l.lead_name, l.contact_number, l.status, l.assigned_to,
-         l.department_id, l.service_type, l.dead_reason,
+         l.department_id, l.service_type, l.dead_reason, l.dead_outcome, l.dead_notes,
+         l.duplicate_of, dup.lead_name AS duplicate_of_name,
          COALESCE(l.department_id,
            (SELECT d.id FROM departments d
              WHERE lower(trim(d.name)) = lower(trim(l.service_type)) LIMIT 1)
@@ -163,10 +189,13 @@ const SELECT_SQL = `
                    AND COALESCE(n.dismissed, false) = false
                    AND n.reminder_date >= CURRENT_DATE) AS has_future_followup,
          (SELECT COUNT(*) FROM lead_notes n WHERE n.lead_id = l.id)::int AS contact_attempts,
+         (SELECT COUNT(DISTINCT n.created_at::date) FROM lead_notes n WHERE n.lead_id = l.id)::int AS attempt_days,
+         (SELECT MAX(n.created_at) FROM lead_notes n WHERE n.lead_id = l.id) AS last_attempt_at,
          (SELECT COUNT(*) FROM recycle_reminders rr
             WHERE rr.lead_id = l.id AND rr.cycle_no = COALESCE(l.cycle_no, 1))::int AS reminders_sent
   FROM leads l
   LEFT JOIN users u ON u.id = l.assigned_to
+  LEFT JOIN leads dup ON dup.id = l.duplicate_of
   LEFT JOIN LATERAL (
     -- "meaningful activity" = a note/follow-up, an assignment or a recycle. Status edits do NOT count.
     SELECT GREATEST(
@@ -246,19 +275,27 @@ const classify = (row, ctx) => {
   let reason = '';
 
   if (row.status === 'Dead') {
-    if (!row.dead_reason) return { state: 'exception', reason: 'Dead reason not set (choose Not Reachable / Budget / Timing)' };
-    if (row.dead_reason === 'not_reachable') {
+    const dr = row.dead_reason;
+    const label = DEAD_REASONS[dr] || dr;
+    if (!dr) return { state: 'exception', reason: 'Dead reason not set (choose a reason in Dead reason ▾)' };
+    // Wrong number / Duplicate / Do-not-contact are suppressed when recorded. If suppression was released, never auto-recycle.
+    if (AUTO_SUPPRESS[dr]) return { state: 'exception', reason: `${label}: contact not permitted - set a new reason or suppress again` };
+    if (dr === 'not_interested') return { state: 'exception', reason: 'Not Interested: customer refused - manager review / suppression, never auto-recycled' };
+    if (dr === 'not_eligible') return { state: 'exception', reason: 'Not Eligible / Service Not Offered: disqualify or manager decision, no blind recycle' };
+    if (dr === 'not_reachable' || dr === 'no_response') {
       const t = R('dead_not_reachable');
       const m = R('dead_min_attempts');
       if (!t.enabled) return { state: 'not_due', reason: 'trigger disabled' };
-      if (m.enabled && Number(row.contact_attempts) < m.value) {
-        return { state: 'not_due', reason: `Not Reachable: attempts ${row.contact_attempts} < min ${m.value}` };
+      if (dr === 'no_response' && (holdActive || row.has_future_followup)) {
+        return { state: 'hold', reason: `${label}: client requested a date - waiting until it passes` };
+      }
+      if (m.enabled && Number(row.attempt_days) < m.value) {
+        return { state: 'hold', reason: `${label}: needs ${m.value} attempts on distinct days (have ${row.attempt_days})` };
       }
       due = inStatus >= t.value;
-      reason = `Not Reachable: in Dead ${inStatus.toFixed(1)}d ${due ? '>=' : '<'} ${t.value}d`;
+      reason = `${label}: in Dead ${inStatus.toFixed(1)}d ${due ? '>=' : '<'} ${t.value}d`;
     } else {
       const t = R('dead_budget_timing');
-      const label = DEAD_REASONS[row.dead_reason] || row.dead_reason;
       if (!t.enabled) return { state: 'not_due', reason: 'trigger disabled' };
       if (holdActive) return { state: 'hold', reason: `${label}: waiting for customer date` };
       if (row.has_future_followup) return { state: 'hold', reason: 'future follow-up scheduled' };
@@ -364,19 +401,38 @@ const setHold = async (leadId, { days = 0, until = null }) => {
   return r.rows[0] || null;
 };
 
-const setDeadReason = async (leadId, reason, date) => {
+// Dead submission: reason + outcome + notes (+ next contact date where relevant). Reasons Wrong Number / Duplicate /
+// Do-Not-Contact are suppressed in the same statement. Returns { error } when validation fails.
+const setDeadReason = async (leadId, { reason, outcome, notes, date, duplicateOf, actorId }) => {
   await ensureColumns();
-  if (!DEAD_REASONS[reason]) return null;
-  const untilDate = reason !== 'not_reachable' && isDate(date) ? date : null;
+  if (!DEAD_REASONS[reason]) return { error: 'Invalid reason' };
+  let dupId = null;
+  if (reason === 'duplicate') {
+    dupId = Number(duplicateOf);
+    if (!Number.isSafeInteger(dupId) || dupId <= 0 || dupId === Number(leadId)) return { error: 'Enter the canonical (original) lead ID — it must be a different lead' };
+    const ex = await pool.query(`SELECT id FROM leads WHERE id = $1`, [dupId]);
+    if (!ex.rows[0]) return { error: `Canonical lead #${dupId} not found` };
+  }
+  const needsDate = reason === 'budget' || reason === 'timing';
+  const dateOk = (reason === 'no_response' || needsDate) && isDate(date);
+  if (needsDate && !dateOk) return { error: 'Customer-confirmed follow-up date is required (YYYY-MM-DD)' };
+  const auto = AUTO_SUPPRESS[reason] || null;
+  const noteText = (reason === 'wrong_number' ? 'Data correction needed: ' : '') + String(notes || '');
   const r = await pool.query(
     `UPDATE leads
-        SET dead_reason = $2,
-            hold_until = CASE WHEN $3::text IS NOT NULL THEN (($3::text)::date + 1)::timestamp ELSE hold_until END
+        SET dead_reason = $2::text, dead_outcome = $3, dead_notes = $4,
+            hold_until = CASE WHEN $5::text IS NOT NULL THEN (($5::text)::date + 1)::timestamp ELSE hold_until END,
+            duplicate_of = CASE WHEN $2::text = 'duplicate' THEN $6::int ELSE duplicate_of END,
+            suppress_reason = COALESCE($7::text, suppress_reason),
+            suppress_note = CASE WHEN $7::text IS NOT NULL THEN left($8::text, 255) ELSE suppress_note END,
+            suppressed_at = CASE WHEN $7::text IS NOT NULL THEN NOW() ELSE suppressed_at END,
+            suppressed_by = CASE WHEN $7::text IS NOT NULL THEN $9::int ELSE suppressed_by END
       WHERE id = $1 AND status = 'Dead'
-      RETURNING id, dead_reason, hold_until`,
-    [leadId, reason, untilDate]
+      RETURNING id, dead_reason, hold_until, suppress_reason`,
+    [leadId, reason, String(outcome || '').slice(0, 120), String(notes || '').slice(0, 255),
+     dateOk ? date : null, dupId, auto, noteText, actorId || null]
   );
-  return r.rows[0] || null;
+  return r.rows[0] ? { row: r.rows[0] } : { error: 'Lead not found or not Dead' };
 };
 
 // Resolve "no department" exception. Only fills an EMPTY department_id; never overwrites one.
@@ -392,17 +448,25 @@ const setDepartment = async (leadId, departmentId) => {
   return r.rows[0] || null;
 };
 
-const suppressLead = async (leadId, reason, note, userId) => {
+const suppressLead = async (leadId, reason, note, userId, duplicateOf) => {
   await ensureColumns();
-  if (!SUPPRESS_REASONS[reason]) return null;
+  if (!SUPPRESS_REASONS[reason]) return { error: 'Invalid reason' };
+  let dupId = null;
+  if (reason === 'duplicate') {
+    dupId = Number(duplicateOf);
+    if (!Number.isSafeInteger(dupId) || dupId <= 0 || dupId === Number(leadId)) return { error: 'Enter the canonical (original) lead ID — it must be a different lead' };
+    const ex = await pool.query(`SELECT id FROM leads WHERE id = $1`, [dupId]);
+    if (!ex.rows[0]) return { error: `Canonical lead #${dupId} not found` };
+  }
   const r = await pool.query(
     `UPDATE leads
-        SET suppress_reason = $2, suppress_note = $3, suppressed_at = NOW(), suppressed_by = $4
+        SET suppress_reason = $2::text, suppress_note = $3, suppressed_at = NOW(), suppressed_by = $4,
+            duplicate_of = CASE WHEN $2::text = 'duplicate' THEN $5::int ELSE duplicate_of END
       WHERE id = $1
       RETURNING id, suppress_reason`,
-    [leadId, reason, (note || '').slice(0, 255) || null, userId || null]
+    [leadId, reason, (note || '').slice(0, 255) || null, userId || null, dupId]
   );
-  return r.rows[0] || null;
+  return r.rows[0] ? { row: r.rows[0] } : { error: 'Lead not found' };
 };
 
 const releaseSuppression = async (leadId) => {
@@ -415,6 +479,15 @@ const releaseSuppression = async (leadId) => {
     [leadId]
   );
   return r.rows[0] || null;
+};
+
+// Logged actor + mandatory reason for every admin override (Section 04)
+const audit = async (leadId, action, actor, reason, details) => {
+  await pool.query(
+    `INSERT INTO recycle_audit (lead_id, action, actor_id, actor_role, reason, details)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [leadId, action, actor?.id || null, actor?.role || null, String(reason || ''), details ? JSON.stringify(details) : null]
+  );
 };
 
 const recordReminder = async (leadId, cycleNo, kind, userId, channel) => {
@@ -432,5 +505,5 @@ module.exports = {
   SUPPRESS_REASONS, DEAD_REASONS, TRIGGERS, getConfig, getDefaults, ensureColumns, getContext,
   getRulesPayload, saveRule, resetRule, getCandidates, getSuppressed, getLeadLifecycleRow,
   reminderDue, classify, ownershipState, lifecycleStatus, decorate,
-  markRecycled, setHold, setDeadReason, setDepartment, suppressLead, releaseSuppression, recordReminder,
+  markRecycled, setHold, setDeadReason, setDepartment, suppressLead, releaseSuppression, recordReminder, audit,
 };

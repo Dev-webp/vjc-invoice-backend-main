@@ -82,6 +82,19 @@ const canView = (u) => u && (u.role === 'chairman' || u.role === 'mis-executive'
 const isChairman = (u) => u && u.role === 'chairman';
 const parseId = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
 const denyChairman = (res) => res.status(403).json({ success: false, message: 'Chairman only' });
+// Admin override rule (Section 04): mandatory reason + logged actor
+const getNote = (req, res) => {
+  const note = String(req.body?.note || '').trim();
+  if (note.length < 3) {
+    res.status(400).json({ success: false, message: 'A reason / note is mandatory for this action (min 3 characters)' });
+    return null;
+  }
+  return note;
+};
+const logAudit = async (leadId, action, req, note, details) => {
+  try { await recycleModel.audit(leadId, action, req.user, note, details); }
+  catch (e) { console.error('[RECYCLE] audit log failed:', e.message); }
+};
 
 // GET /api/recycle/queue — everything except "not due yet"
 const queue = async (req, res) => {
@@ -168,16 +181,18 @@ const resetRule = async (req, res) => {
   }
 };
 
-// PUT /api/recycle/:id/hold  { days } or { until: 'YYYY-MM-DD' }  (days = 0 clears)
+// PUT /api/recycle/:id/hold  { days | until:'YYYY-MM-DD', note }  (days = 0 clears)  — admin override: note mandatory
 const setHold = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const note = getNote(req, res); if (!note) return;
     const { days, until } = req.body || {};
     if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) return res.status(400).json({ success: false, message: 'Date must be YYYY-MM-DD' });
     const r = await recycleModel.setHold(id, { days, until });
     if (!r) return res.status(404).json({ success: false, message: 'Lead not found or not Warm/Cold/Dead' });
+    await logAudit(id, r.hold_until ? 'hold' : 'hold_release', req, note, { days: days || null, until: until || null });
     res.json({ success: true, ...r });
   } catch (err) {
     console.error('[RECYCLE] hold:', err);
@@ -185,33 +200,41 @@ const setHold = async (req, res) => {
   }
 };
 
-// PUT /api/recycle/:id/dead-reason { reason: not_reachable|budget|timing, date? }
+// PUT /api/recycle/:id/dead-reason { reason, outcome, note, date?, duplicate_of? }
+// Dead submission requires reason + outcome + notes (+ date where relevant). Validation failures are rejected.
 const deadReason = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
-    const { reason, date } = req.body || {};
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const { reason, outcome, date, duplicate_of } = req.body || {};
     if (!recycleModel.DEAD_REASONS[reason]) return res.status(400).json({ success: false, message: 'Invalid reason' });
+    const note = getNote(req, res); if (!note) return;
+    if (String(outcome || '').trim().length < 2) return res.status(400).json({ success: false, message: 'Outcome is mandatory' });
     if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, message: 'Date must be YYYY-MM-DD' });
-    const r = await recycleModel.setDeadReason(id, reason, date);
-    if (!r) return res.status(404).json({ success: false, message: 'Lead not found or not Dead' });
-    res.json({ success: true, ...r });
+    const r = await recycleModel.setDeadReason(id, {
+      reason, outcome: String(outcome).trim(), notes: note, date, duplicateOf: duplicate_of, actorId: req.user.id,
+    });
+    if (r.error) return res.status(400).json({ success: false, message: r.error });
+    await logAudit(id, 'dead_reason', req, note, { reason, outcome, date: date || null, duplicate_of: duplicate_of || null, suppressed: r.row.suppress_reason || null });
+    res.json({ success: true, ...r.row });
   } catch (err) {
     console.error('[RECYCLE] deadReason:', err);
     res.status(500).json({ success: false, message: 'Failed to set dead reason' });
   }
 };
 
-// PUT /api/recycle/:id/department { department_id } — resolves "no department" exception (only fills an empty department)
+// PUT /api/recycle/:id/department { department_id, note } — only fills an EMPTY department
 const setDepartment = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
     const dep = parseId(req.body?.department_id);
     if (!id || !dep) return res.status(400).json({ success: false, message: 'Invalid lead / department' });
+    const note = getNote(req, res); if (!note) return;
     const r = await recycleModel.setDepartment(id, dep);
     if (!r) return res.status(409).json({ success: false, message: 'Lead already has a department, or department not found' });
+    await logAudit(id, 'set_department', req, note, { department_id: dep });
     res.json({ success: true, ...r });
   } catch (err) {
     console.error('[RECYCLE] setDepartment:', err);
@@ -219,31 +242,35 @@ const setDepartment = async (req, res) => {
   }
 };
 
-// PUT /api/recycle/:id/suppress { reason, note }
+// PUT /api/recycle/:id/suppress { reason, note, duplicate_of? }
 const suppress = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
-    const { reason, note } = req.body || {};
+    const { reason, duplicate_of } = req.body || {};
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
     if (!recycleModel.SUPPRESS_REASONS[reason]) return res.status(400).json({ success: false, message: 'Invalid reason' });
-    const r = await recycleModel.suppressLead(id, reason, note, req.user.id);
-    if (!r) return res.status(404).json({ success: false, message: 'Lead not found' });
-    res.json({ success: true, ...r });
+    const note = getNote(req, res); if (!note) return;
+    const r = await recycleModel.suppressLead(id, reason, note, req.user.id, duplicate_of);
+    if (r.error) return res.status(400).json({ success: false, message: r.error });
+    await logAudit(id, 'suppress', req, note, { reason, duplicate_of: duplicate_of || null });
+    res.json({ success: true, ...r.row });
   } catch (err) {
     console.error('[RECYCLE] suppress:', err);
     res.status(500).json({ success: false, message: 'Failed to suppress lead' });
   }
 };
 
-// PUT /api/recycle/:id/release
+// PUT /api/recycle/:id/release { note } — documented re-consent / authorized correction (reason mandatory, actor logged)
 const release = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const note = getNote(req, res); if (!note) return;
     const r = await recycleModel.releaseSuppression(id);
     if (!r) return res.status(404).json({ success: false, message: 'Lead not found or not suppressed' });
+    await logAudit(id, 'release_suppression', req, note, null);
     res.json({ success: true, id: r.id });
   } catch (err) {
     console.error('[RECYCLE] release:', err);
@@ -251,12 +278,13 @@ const release = async (req, res) => {
   }
 };
 
-// POST /api/recycle/:id/recycle — chairman manually fires the event, ONLY if rules say Eligible
+// POST /api/recycle/:id/recycle { note } — admin override: ONLY if rules say Eligible; recipient is always the next round-robin consultant
 const recycleNow = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const note = getNote(req, res); if (!note) return;
     const ctx = await recycleModel.getContext();
     const [row] = await recycleModel.getCandidates(id);
     if (!row) return res.status(404).json({ success: false, message: 'Lead not found, suppressed, or not Warm/Cold/Dead' });
@@ -264,6 +292,7 @@ const recycleNow = async (req, res) => {
     if (c.state !== 'eligible') return res.status(400).json({ success: false, message: `Not eligible: ${c.reason}` });
     const r = await recycleOne(row, ctx.cfg);
     if (!r.ok) return res.status(409).json({ success: false, message: r.reason });
+    await logAudit(id, 'recycle_now', req, note, { cycle_no: r.cycle_no, to_staff: r.staffId });
     res.json({ success: true, cycle_no: r.cycle_no });
   } catch (err) {
     console.error('[RECYCLE] recycleNow:', err);

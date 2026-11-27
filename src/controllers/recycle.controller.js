@@ -1,27 +1,39 @@
-// NEW FILE (v3) — Lead Recycling + lifecycle + trigger-matrix controller. Touches NO existing file.
-// It only CALLS existing functions (pickNextStaffForDepartment, autoAssignLead,
-// logAssignmentHistory, sendAssignmentWhatsapp); it does not modify them.
+// NEW FILE (v5) — Lead Recycling controller. Touches NO existing file.
+// Calls NO existing code and NO WhatsApp: all alerts are in-system notifications (recycle_notifications).
 const recycleModel = require('../models/recycle.model');
-const leadModel = require('../models/lead.model');
-const departmentModel = require('../models/department.model');
-const { sendAssignmentWhatsapp } = require('../services/whatsapp.service');
-const { sendReminderWhatsapp } = require('../services/recycle.notify');
 
-// Recycling = ONE controlled event: next eligible consultant in the SAME department (round-robin) -> Cycle N+1
-const recycleOne = async (row, cfg) => {
+// Recycling = ONE controlled, transactional event. Recipient is ALWAYS chosen by the per-team round-robin cursor.
+const recycleOne = async (row, ctx, routing, actor) => {
   const deptId = row.resolved_department_id || null;
   if (!deptId) return { ok: false, reason: 'no department linked to this lead' };
+  const maxCycles = recycleModel.ruleFor(ctx.rules, deptId, 'max_cycles').value;
+  const cap = recycleModel.ruleFor(ctx.rules, deptId, 'consultant_capacity');
+  const res = await recycleModel.recycleLeadTx(row.id, {
+    deptId, maxCycles, coolingDays: ctx.cfg.coolingDays,
+    capacity: cap.enabled ? cap.value : null, routing, actorId: actor?.id || null,
+  });
+  if (res.ok) {
+    await recycleModel.notify(res.staffId, row.id, 'recycled_to_you',
+      `Lead "${row.lead_name}" has been recycled to you (cycle ${res.cycle_no}). First contact is due within 30 minutes.`).catch(() => {});
+  }
+  return res;
+};
 
-  const staffId = await departmentModel.pickNextStaffForDepartment(deptId, row.assigned_to);
-  if (!staffId) return { ok: false, reason: 'no consultant available (stays in queue)' };
+const BLOCKED_TEXT = 'No other eligible consultant in this team/service - Admin notified, lead stays in the pending queue';
 
-  const marked = await recycleModel.markRecycled(row.id, cfg);
-  if (!marked) return { ok: false, reason: 'lead changed meanwhile (skipped)' };
-
-  await leadModel.autoAssignLead(row.id, staffId, deptId);           // also starts the normal 30-min SLA
-  await leadModel.logAssignmentHistory(row.id, staffId, `recycled_cycle_${marked.cycle_no}`);
-  sendAssignmentWhatsapp(row.id, staffId, `recycled_cycle_${marked.cycle_no}`).catch(() => {});
-  return { ok: true, cycle_no: marked.cycle_no, staffId };
+const notifyAdmins = async (row, ctx, dry) => {
+  const t = recycleModel.ruleFor(ctx.rules, null, 'notify_admin_no_consultant');
+  if (!t.enabled || dry) return 0;
+  const first = await recycleModel.recordReminder(row.id, row.cycle_no, 'admin_no_consultant', null, 'in_system');
+  if (!first) return 0;                                  // once per lead per cycle
+  let sent = 0;
+  const admins = await recycleModel.getAdminIds().catch(() => []);
+  for (const adminId of admins) {
+    await recycleModel.notify(adminId, row.id, 'admin_no_consultant',
+      `Recycle blocked for "${row.lead_name}": no other eligible consultant is available in its team/service. Please review.`).catch(() => {});
+    sent += 1;
+  }
+  return sent;
 };
 
 // GET /api/recycle/run?secret=XXX[&dry=1]   <- external cron (same style as /api/cron/sla-check)
@@ -31,13 +43,14 @@ const run = async (req, res) => {
   }
   const dry = req.query.dry === '1';
   const out = {
-    dry, checked: 0, eligible: 0, hold: 0, cooling: 0, exception: 0,
-    recycled: 0, skipped: 0, errors: 0, reminders_due: 0, reminders_sent: 0,
+    dry, checked: 0, queued: 0, eligible: 0, hold: 0, cooling: 0, exception: 0,
+    recycled: 0, no_consultant: 0, skipped: 0, errors: 0, reminders_due: 0, reminders_sent: 0,
   };
   try {
     const ctx = await recycleModel.getContext();
-    const rows = await recycleModel.getCandidates();
+    const rows = await recycleModel.getCandidates(null, ctx.rules);
     out.checked = rows.length;
+    if (!dry) out.queued = await recycleModel.evaluateAll(ctx);      // single idempotent evaluation path
     let done = 0;
     const recycledIds = new Set();
     for (const row of rows) {
@@ -49,12 +62,16 @@ const run = async (req, res) => {
         out.eligible += 1;
         if (dry || done >= ctx.cfg.batch) continue;
         try {
-          const r = await recycleOne(row, ctx.cfg);
-          if (r.ok) { out.recycled += 1; done += 1; recycledIds.add(row.id); } else out.skipped += 1;
+          const r = await recycleOne(row, ctx, 'auto_cron', null);
+          if (r.ok) { out.recycled += 1; done += 1; recycledIds.add(row.id); }
+          else if (r.noConsultant) {
+            out.no_consultant += 1;
+            await recycleModel.markBlocked(row.id, row.cycle_no, BLOCKED_TEXT);
+            await notifyAdmins(row, ctx, dry);
+          } else out.skipped += 1;
         } catch (e) { console.error(`[RECYCLE] lead ${row.id}:`, e); out.errors += 1; }
       }
     }
-    // Reminders (Warm / Cold "no meaningful activity") — only for triggers enabled in Rules; once per lead per cycle
     for (const row of rows) {
       if (recycledIds.has(row.id)) continue;
       const kind = recycleModel.reminderDue(row, ctx);
@@ -62,10 +79,11 @@ const run = async (req, res) => {
       out.reminders_due += 1;
       if (dry) continue;
       try {
-        const rec = await recycleModel.recordReminder(row.id, row.cycle_no, kind, row.assigned_to, 'whatsapp');
+        const rec = await recycleModel.recordReminder(row.id, row.cycle_no, kind, row.assigned_to, 'in_system');
         if (rec) {
           const days = Math.floor(Number(row.idle_days) || 0);
-          await sendReminderWhatsapp(row.id, row.assigned_to, `Reminder: no activity for ${days} days - please follow up`);
+          await recycleModel.notify(row.assigned_to, row.id, kind,
+            `Follow-up warning: no meaningful activity on "${row.lead_name}" for ${days} days. Please contact the customer and log the attempt.`);
           out.reminders_sent += 1;
         }
       } catch (e) { console.error(`[RECYCLE] reminder lead ${row.id}:`, e); out.errors += 1; }
@@ -82,7 +100,6 @@ const canView = (u) => u && (u.role === 'chairman' || u.role === 'mis-executive'
 const isChairman = (u) => u && u.role === 'chairman';
 const parseId = (v) => { const n = Number(v); return Number.isSafeInteger(n) && n > 0 ? n : null; };
 const denyChairman = (res) => res.status(403).json({ success: false, message: 'Chairman only' });
-// Admin override rule (Section 04): mandatory reason + logged actor
 const getNote = (req, res) => {
   const note = String(req.body?.note || '').trim();
   if (note.length < 3) {
@@ -96,12 +113,12 @@ const logAudit = async (leadId, action, req, note, details) => {
   catch (e) { console.error('[RECYCLE] audit log failed:', e.message); }
 };
 
-// GET /api/recycle/queue — everything except "not due yet"
+// GET /api/recycle/queue
 const queue = async (req, res) => {
   if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
   try {
     const ctx = await recycleModel.getContext();
-    const rows = await recycleModel.getCandidates();
+    const rows = await recycleModel.getCandidates(null, ctx.rules);
     const items = rows.map((r) => recycleModel.decorate(r, ctx)).filter((r) => r.state !== 'not_due');
     const { departments } = await recycleModel.getRulesPayload();
     res.json({ success: true, config: ctx.cfg, departments, items });
@@ -140,7 +157,7 @@ const lifecycle = async (req, res) => {
   }
 };
 
-// GET /api/recycle/rules — trigger matrix (Director/Admin view)
+// GET /api/recycle/rules
 const getRules = async (req, res) => {
   if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
   try {
@@ -167,7 +184,7 @@ const saveRule = async (req, res) => {
   }
 };
 
-// POST /api/recycle/rules/reset { department_id|null, trigger_key } (chairman only) — back to inherited/default
+// POST /api/recycle/rules/reset { department_id|null, trigger_key } (chairman only)
 const resetRule = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
@@ -181,7 +198,7 @@ const resetRule = async (req, res) => {
   }
 };
 
-// PUT /api/recycle/:id/hold  { days | until:'YYYY-MM-DD', note }  (days = 0 clears)  — admin override: note mandatory
+// PUT /api/recycle/:id/hold  { days | until:'YYYY-MM-DD', note }  (days = 0 clears)
 const setHold = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
@@ -201,7 +218,7 @@ const setHold = async (req, res) => {
 };
 
 // PUT /api/recycle/:id/dead-reason { reason, outcome, note, date?, duplicate_of? }
-// Dead submission requires reason + outcome + notes (+ date where relevant). Validation failures are rejected.
+// Evaluated immediately after a Dead submission (same single evaluation path as the scheduled job).
 const deadReason = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
@@ -217,6 +234,7 @@ const deadReason = async (req, res) => {
     });
     if (r.error) return res.status(400).json({ success: false, message: r.error });
     await logAudit(id, 'dead_reason', req, note, { reason, outcome, date: date || null, duplicate_of: duplicate_of || null, suppressed: r.row.suppress_reason || null });
+    try { await recycleModel.evaluateOne(id); } catch (e) { console.error('[RECYCLE] evaluate on Dead submission failed:', e.message); }
     res.json({ success: true, ...r.row });
   } catch (err) {
     console.error('[RECYCLE] deadReason:', err);
@@ -261,7 +279,7 @@ const suppress = async (req, res) => {
   }
 };
 
-// PUT /api/recycle/:id/release { note } — documented re-consent / authorized correction (reason mandatory, actor logged)
+// PUT /api/recycle/:id/release { note }
 const release = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
@@ -278,7 +296,7 @@ const release = async (req, res) => {
   }
 };
 
-// POST /api/recycle/:id/recycle { note } — admin override: ONLY if rules say Eligible; recipient is always the next round-robin consultant
+// POST /api/recycle/:id/recycle { note } — admin override: only if rules say Eligible; recipient = next in cursor
 const recycleNow = async (req, res) => {
   if (!isChairman(req.user)) return denyChairman(res);
   try {
@@ -286,13 +304,16 @@ const recycleNow = async (req, res) => {
     if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
     const note = getNote(req, res); if (!note) return;
     const ctx = await recycleModel.getContext();
-    const [row] = await recycleModel.getCandidates(id);
+    const [row] = await recycleModel.getCandidates(id, ctx.rules);
     if (!row) return res.status(404).json({ success: false, message: 'Lead not found, suppressed, or not Warm/Cold/Dead' });
     const c = recycleModel.classify(row, ctx);
     if (c.state !== 'eligible') return res.status(400).json({ success: false, message: `Not eligible: ${c.reason}` });
-    const r = await recycleOne(row, ctx.cfg);
-    if (!r.ok) return res.status(409).json({ success: false, message: r.reason });
-    await logAudit(id, 'recycle_now', req, note, { cycle_no: r.cycle_no, to_staff: r.staffId });
+    const r = await recycleOne(row, ctx, 'admin_override', req.user);
+    if (!r.ok) {
+      if (r.noConsultant) await recycleModel.markBlocked(row.id, row.cycle_no, BLOCKED_TEXT);
+      return res.status(409).json({ success: false, message: r.reason });
+    }
+    await logAudit(id, 'recycle_now', req, note, { cycle_no: r.cycle_no, to_staff: r.staffId, from_staff: r.oldOwner });
     res.json({ success: true, cycle_no: r.cycle_no });
   } catch (err) {
     console.error('[RECYCLE] recycleNow:', err);
@@ -300,7 +321,82 @@ const recycleNow = async (req, res) => {
   }
 };
 
+// ── Section 05: contact attempt log (consultants log on their OWN leads) ──
+// POST /api/recycle/:id/attempt
+const logAttempt = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const r = await recycleModel.createAttempt(id, req.user, req.body || {});
+    if (r.error) return res.status(400).json({ success: false, message: r.error });
+    res.json({ success: true, attempt: r.row });
+  } catch (err) {
+    console.error('[RECYCLE] logAttempt:', err);
+    res.status(500).json({ success: false, message: 'Failed to log attempt' });
+  }
+};
+
+// GET /api/recycle/:id/attempts — attempt history + follow-up reschedule history
+const attempts = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const lead = await recycleModel.getLeadOwner(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+    if (!canView(req.user) && Number(lead.assigned_to) !== Number(req.user.id)) {
+      return res.status(403).json({ success: false, message: 'Not allowed' });
+    }
+    res.json({ success: true, lead: { id: lead.id, lead_name: lead.lead_name }, ...(await recycleModel.listAttempts(id)) });
+  } catch (err) {
+    console.error('[RECYCLE] attempts:', err);
+    res.status(500).json({ success: false, message: 'Failed to load attempts' });
+  }
+};
+
+// GET /api/recycle/my-leads — leads assigned to the logged-in consultant
+const myLeads = async (req, res) => {
+  try {
+    res.json({ success: true, channels: recycleModel.CHANNELS, outcomes: recycleModel.OUTCOMES, items: await recycleModel.myLeads(req.user.id) });
+  } catch (err) {
+    console.error('[RECYCLE] myLeads:', err);
+    res.status(500).json({ success: false, message: 'Failed to load your leads' });
+  }
+};
+
+// GET /api/recycle/notifications — the logged-in user's in-system notifications
+const notifications = async (req, res) => {
+  try {
+    res.json({ success: true, ...(await recycleModel.listNotifications(req.user.id)) });
+  } catch (err) {
+    console.error('[RECYCLE] notifications:', err);
+    res.status(500).json({ success: false, message: 'Failed to load notifications' });
+  }
+};
+
+// POST /api/recycle/notifications/read { ids?: [] }  (no ids = mark all read)
+const readNotifications = async (req, res) => {
+  try {
+    await recycleModel.markNotificationsRead(req.user.id, req.body?.ids);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[RECYCLE] readNotifications:', err);
+    res.status(500).json({ success: false, message: 'Failed to update notifications' });
+  }
+};
+
+// GET /api/recycle/analytics — manager flags (patterns only, never an accusation)
+const analytics = async (req, res) => {
+  if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
+  try {
+    res.json({ success: true, ...(await recycleModel.getAnalytics()) });
+  } catch (err) {
+    console.error('[RECYCLE] analytics:', err);
+    res.status(500).json({ success: false, message: 'Failed to load analytics' });
+  }
+};
+
 module.exports = {
   run, queue, suppressed, lifecycle, getRules, saveRule, resetRule,
   setHold, deadReason, setDepartment, suppress, release, recycleNow,
+  logAttempt, attempts, myLeads, analytics, notifications, readNotifications,
 };

@@ -1,4 +1,4 @@
-// NEW FILE (v3) — mounted at /api/recycle (the 2 lines in routes/index.js are already there)
+// NEW FILE (v5) — mounted at /api/recycle (the 2 lines in routes/index.js are already there)
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middlewares/auth.middleware');
@@ -7,10 +7,16 @@ const c = require('../controllers/recycle.controller');
 router.get('/run', c.run);                                    // cron (secret protected, no login)
 router.get('/queue', verifyToken, c.queue);
 router.get('/suppressed', verifyToken, c.suppressed);
+router.get('/analytics', verifyToken, c.analytics);
+router.get('/my-leads', verifyToken, c.myLeads);
+router.get('/notifications', verifyToken, c.notifications);
+router.post('/notifications/read', verifyToken, c.readNotifications);
 router.get('/rules', verifyToken, c.getRules);
 router.put('/rules', verifyToken, c.saveRule);
 router.post('/rules/reset', verifyToken, c.resetRule);
 router.get('/lead/:id/lifecycle', verifyToken, c.lifecycle);
+router.get('/:id/attempts', verifyToken, c.attempts);
+router.post('/:id/attempt', verifyToken, c.logAttempt);
 router.put('/:id/hold', verifyToken, c.setHold);
 router.put('/:id/dead-reason', verifyToken, c.deadReason);
 router.put('/:id/department', verifyToken, c.setDepartment);

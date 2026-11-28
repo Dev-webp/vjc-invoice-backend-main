@@ -9,12 +9,13 @@ const recycleOne = async (row, ctx, routing, actor) => {
   const maxCycles = recycleModel.ruleFor(ctx.rules, deptId, 'max_cycles').value;
   const cap = recycleModel.ruleFor(ctx.rules, deptId, 'consultant_capacity');
   const res = await recycleModel.recycleLeadTx(row.id, {
-    deptId, maxCycles, coolingDays: ctx.cfg.coolingDays,
+    deptId, maxCycles, coolingDays: ctx.cfg.coolingDays, fromCycle: Number(row.cycle_no),
     capacity: cap.enabled ? cap.value : null, routing, actorId: actor?.id || null,
   });
-  if (res.ok) {
+  if (res.ok && !res.duplicate) {
+    // Section 08: neutral wording for the new consultant (no "recycled" / "Dead" label)
     await recycleModel.notify(res.staffId, row.id, 'recycled_to_you',
-      `Lead "${row.lead_name}" has been recycled to you (cycle ${res.cycle_no}). First contact is due within 30 minutes.`).catch(() => {});
+      `Assigned Lead: "${row.lead_name}" has been assigned to you. Open "Brief" in Log Attempt for the customer details. First contact is due within 30 minutes.`).catch(() => {});
   }
   return res;
 };
@@ -36,6 +37,14 @@ const notifyAdmins = async (row, ctx, dry) => {
   return sent;
 };
 
+// Section 07: failure alert to every admin (in-system), once per lead/cycle or once while unread
+const alertFailure = async (kind, row, message) => {
+  const admins = await recycleModel.getAdminIds().catch(() => []);
+  for (const adminId of admins) {
+    await recycleModel.notifyOnce(adminId, row ? row.id : null, kind, message).catch(() => {});
+  }
+};
+
 // GET /api/recycle/run?secret=XXX[&dry=1]   <- external cron (same style as /api/cron/sla-check)
 const run = async (req, res) => {
   if (process.env.CRON_SECRET && req.query.secret !== process.env.CRON_SECRET) {
@@ -46,7 +55,9 @@ const run = async (req, res) => {
     dry, checked: 0, queued: 0, eligible: 0, hold: 0, cooling: 0, exception: 0,
     recycled: 0, no_consultant: 0, skipped: 0, errors: 0, reminders_due: 0, reminders_sent: 0,
   };
+  let runId = null;
   try {
+    runId = await recycleModel.startRun(dry);
     const ctx = await recycleModel.getContext();
     const rows = await recycleModel.getCandidates(null, ctx.rules);
     out.checked = rows.length;
@@ -69,7 +80,12 @@ const run = async (req, res) => {
             await recycleModel.markBlocked(row.id, row.cycle_no, BLOCKED_TEXT);
             await notifyAdmins(row, ctx, dry);
           } else out.skipped += 1;
-        } catch (e) { console.error(`[RECYCLE] lead ${row.id}:`, e); out.errors += 1; }
+        } catch (e) {
+          console.error(`[RECYCLE] lead ${row.id}:`, e);
+          out.errors += 1;
+          await recycleModel.recordError(row.id, row.cycle_no, 'recycle', e.message).catch(() => {});
+          await alertFailure('recycle_failed', row, `Recycling failed for "${row.lead_name}" after retries: ${e.message}`);
+        }
       }
     }
     for (const row of rows) {
@@ -89,9 +105,13 @@ const run = async (req, res) => {
       } catch (e) { console.error(`[RECYCLE] reminder lead ${row.id}:`, e); out.errors += 1; }
     }
     console.log('[RECYCLE] run:', out);
+    if (runId) await recycleModel.finishRun(runId, out, null).catch(() => {});
     res.json({ success: true, ...out });
   } catch (err) {
     console.error('[RECYCLE] fatal:', err);
+    await recycleModel.recordError(null, null, 'run', err.message).catch(() => {});
+    if (runId) await recycleModel.finishRun(runId, out, err.message).catch(() => {});
+    await alertFailure('run_failed', null, `Recycling run failed: ${err.message}`);
     res.status(500).json({ success: false, message: 'Recycle run failed' });
   }
 };
@@ -384,6 +404,49 @@ const readNotifications = async (req, res) => {
   }
 };
 
+// GET /api/recycle/:id/brief — what the NEW consultant sees (neutral; assigned consultant or admin/MIS)
+const brief = async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const lead = await recycleModel.getLeadOwner(id);
+    if (!lead) return res.status(404).json({ success: false, message: 'Lead not found' });
+    if (!canView(req.user) && Number(lead.assigned_to) !== Number(req.user.id)) {
+      return res.status(403).json({ success: false, message: 'Not allowed' });
+    }
+    res.json({ success: true, brief: await recycleModel.getBrief(id) });
+  } catch (err) {
+    console.error('[RECYCLE] brief:', err);
+    res.status(500).json({ success: false, message: 'Failed to load lead brief' });
+  }
+};
+
+// GET /api/recycle/:id/timeline — Director/Admin full event timeline
+const timeline = async (req, res) => {
+  if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'Invalid lead ID' });
+    const t = await recycleModel.getTimeline(id);
+    if (!t) return res.status(404).json({ success: false, message: 'Lead not found' });
+    res.json({ success: true, ...t });
+  } catch (err) {
+    console.error('[RECYCLE] timeline:', err);
+    res.status(500).json({ success: false, message: 'Failed to load timeline' });
+  }
+};
+
+// GET /api/recycle/health — queue / run monitoring
+const health = async (req, res) => {
+  if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
+  try {
+    res.json({ success: true, ...(await recycleModel.getHealth()) });
+  } catch (err) {
+    console.error('[RECYCLE] health:', err);
+    res.status(500).json({ success: false, message: 'Failed to load health' });
+  }
+};
+
 // GET /api/recycle/analytics — manager flags (patterns only, never an accusation)
 const analytics = async (req, res) => {
   if (!canView(req.user)) return res.status(403).json({ success: false, message: 'Not allowed' });
@@ -398,5 +461,5 @@ const analytics = async (req, res) => {
 module.exports = {
   run, queue, suppressed, lifecycle, getRules, saveRule, resetRule,
   setHold, deadReason, setDepartment, suppress, release, recycleNow,
-  logAttempt, attempts, myLeads, analytics, notifications, readNotifications,
+  logAttempt, attempts, myLeads, analytics, notifications, readNotifications, brief, timeline, health,
 };
